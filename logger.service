@@ -1,0 +1,12 @@
+[Unit]
+Description=Logger daemon
+
+[Service]
+Type=simple
+Environment="LD_LIBRARY_PATH=/usr/local/lib"
+ExecStart=/usr/local/logger/logger
+Restart=always
+User=logger
+
+[Install]
+WantedBy=multi-user.target
