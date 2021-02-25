@@ -22,7 +22,7 @@ bin/%: ../common/libcommon.a obj/%.o
 
 obj/%.o: %.cpp
 	-if [ ! -d obj ]; then mkdir obj; fi;
-	g++ -ggdb -std=c++14 -Wall -c $< -o $@ $(CPPFLAGS) -I../common
+	g++ -ggdb -Wall -c $< -o $@ $(CPPFLAGS) -I../common
 
 install: bin/logger
 	-if [ ! -d $(prefix)/logger ]; then mkdir $(prefix)/logger; fi;
