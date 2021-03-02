@@ -24,7 +24,7 @@ bin/%: ../common/libcommon.a obj/%.o
 	cd ../common; ./configure;
 
 ../common/configure:
-	cd ../; git clone git@github.com:benkietzman/common.git
+	cd ../; git clone https://github.com/benkietzman/common.git
 
 obj/%.o: %.cpp ../common/Makefile
 	-if [ ! -d obj ]; then mkdir obj; fi;
