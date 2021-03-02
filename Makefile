@@ -17,10 +17,16 @@ bin/%: ../common/libcommon.a obj/%.o
 	-if [ ! -d bin ]; then mkdir bin; fi;
 	g++ -o bin/logger obj/logger.o $(LDFLAGS) -L../common -lbz2 -lcommon -lb64 -lcrypto -lexpat -lmjson -lnsl -lpthread -lrt -lssl -ltar -lz
 
-../common/libcommon.a:
-	cd ../common; ./configure; make;
+../common/libcommon.a: ../common/Makefile
+	cd ../common; make;
 
-obj/%.o: %.cpp
+../common/Makefile: ../common/configure
+	cd ../common; ./configure;
+
+../common/configure:
+	cd ../; git clone git@github.com:benkietzman/common.git
+
+obj/%.o: %.cpp ../common/Makefile
 	-if [ ! -d obj ]; then mkdir obj; fi;
 	g++ -ggdb -Wall -c $< -o $@ $(CPPFLAGS) -I../common
 
