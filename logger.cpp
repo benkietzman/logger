@@ -839,17 +839,6 @@ bool auth(const string strApplication, const string strUser, const string strPas
           }
           gpCentral->free(getAccountType);
         }
-        if (gpSyslog != NULL)
-        {
-          if (bResult)
-          {
-            gpSyslog->logon((string)"Authorized the " + strApplication + (string)" application.", strUser);
-          }
-          else
-          {
-            gpSyslog->logon((string)"Failed to authorize the " + strApplication + (string)" application.", strUser, false);
-          }
-        }
       }
       else if (gpSyslog != NULL)
       {
@@ -886,17 +875,6 @@ bool auth(const string strApplication, const string strUser, const string strPas
         else
         {
           strError = "Failed to locate Account Type.";
-        }
-      }
-      if (gpSyslog != NULL)
-      {
-        if (bResult)
-        {
-          gpSyslog->logon((string)"Authorized the " + strApplication + (string)" application.", strUser);
-        }
-        else
-        {
-          gpSyslog->logon((string)"Failed to authorize the " + strApplication + (string)" application.", strUser, false);
         }
       }
     }
