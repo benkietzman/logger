@@ -1649,10 +1649,6 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
     ssMessage << strPrefix << "->SSL_new() error:  Failed to create SSL handle.";
     gpCentral->notify(ssMessage.str(), strError);
   }
-  if (gpSyslog != NULL)
-  {
-    gpSyslog->connectionStopped("Closed request.", fdSocket);
-  }
   close(fdSocket);
   mutexRequest.lock();
   gnRequests--;
