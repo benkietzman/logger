@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
       gbShutdown = true;
       ssMessage.str("");
       ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << gstrData << "/.cred]:  " << strerror(errno);
-      gpCentral->alert(ssMessage.str(), strError);
+      gpCentral->alert(ssMessage.str());
     }
     inFile.close();
     // }}}
@@ -379,12 +379,7 @@ int main(int argc, char *argv[])
       ofstream outPid, outStart;
       string strLine;
       SSL_CTX *ctx;
-      SSL_METHOD *method;
       setlocale(LC_ALL, "");
-      SSL_library_init();
-      OpenSSL_add_all_algorithms();
-      SSL_load_error_strings();
-      method = (SSL_METHOD *)SSLv23_server_method();
       outPid.open((gstrData + PID).c_str());
       if (outPid)
       {
@@ -434,206 +429,198 @@ int main(int argc, char *argv[])
       {
         ssMessage.str("");
         ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << gstrData << STORAGE << "/application.index]:  " << strerror(errno);
-        gpCentral->notify("", ssMessage.str(), strError);
+        gpCentral->notify(ssMessage.str());
       }
       inApplication.close();
       thread threadExpire(expire);
       pthread_setname_np(threadExpire.native_handle(), "expire");
       thread threadMonitor(monitor);
       pthread_setname_np(threadMonitor.native_handle(), "monitor");
-      if ((ctx = SSL_CTX_new(method)) != NULL)
+      if ((ctx = gpCentral->utility()->sslInitServer(strError)) != NULL)
       {
-        if (SSL_CTX_use_certificate_file(ctx, (gstrData + CERTIFICATE).c_str(), SSL_FILETYPE_PEM) > 0)
+        ssMessage.str("");
+        ssMessage << strPrefix << "->CentralAddons::utility()->sslInitServer():  SSL initialization was successful.";
+        gpCentral->log(ssMessage.str());
+        if (gpCentral->utility()->sslLoadCertKey(ctx, (gstrData + CERTIFICATE), (gstrData + PRIVATE_KEY), strError))
         {
-          if (SSL_CTX_use_PrivateKey_file(ctx, (gstrData + PRIVATE_KEY).c_str(), SSL_FILETYPE_PEM) > 0)
-          {
-            if (SSL_CTX_check_private_key(ctx))
-            {
-              bool bListen[4][4];
-              int fdSocket[4], nReturn;
-              SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
-              for (size_t i = 0; i < 4; i++)
-              {
-                addrinfo hints, *result;
-                memset(&hints, 0, sizeof(struct addrinfo));
-                hints.ai_family = AF_INET6;
-                hints.ai_socktype = SOCK_STREAM;
-                hints.ai_flags = AI_PASSIVE;
-                bListen[i][0] = bListen[i][1] = bListen[i][2] = bListen[i][3] = false;
-                if ((nReturn = getaddrinfo(NULL, ((i == 0)?STANDARD_PORT_SINGLE:((i == 1)?SECURE_PORT_SINGLE:((i == 2)?STANDARD_PORT_MULTI:SECURE_PORT_MULTI))), &hints, &result)) == 0)
-                {
-                  struct addrinfo *rp;
-                  bListen[i][0] = true;
-                  for (rp = result; !bListen[i][2] && rp != NULL; rp = rp->ai_next)
-                  {
-                    bListen[i][1] = bListen[i][2] = false;
-                    if ((fdSocket[i] = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) >= 0)
-                    {
-                      int nOn = 1;
-                      bListen[i][1] = true;
-                      setsockopt(fdSocket[i], SOL_SOCKET, SO_REUSEADDR, (char *)&nOn, sizeof(nOn));
-                      if (bind(fdSocket[i], rp->ai_addr, rp->ai_addrlen) == 0)
-                      {
-                        bListen[i][2] = true;
-                        if (listen(fdSocket[i], SOMAXCONN) == 0)
-                        {
-                          bListen[i][3] = true;
-                        }
-                        else
-                        {
-                          close(fdSocket[i]);
-                        }
-                      }
-                      else
-                      {
-                        close(fdSocket[i]);
-                      }
-                    }
-                  }
-                  freeaddrinfo(result);
-                }
-              }
-              if (bListen[0][3] && bListen[1][3] && bListen[2][3] && bListen[3][3])
-              {
-                ssMessage.str("");
-                ssMessage << strPrefix << "->listen():  Listening to socket.";
-                gpCentral->log(ssMessage.str(), strError);
-                while (!gbShutdown)
-                {
-                  pollfd fds[4];
-                  fds[0].fd = fdSocket[0];
-                  fds[0].events = POLLIN;
-                  fds[1].fd = fdSocket[1];
-                  fds[1].events = POLLIN;
-                  fds[2].fd = fdSocket[2];
-                  fds[2].events = POLLIN;
-                  fds[3].fd = fdSocket[3];
-                  fds[3].events = POLLIN;
-                  if ((nReturn = poll(fds, 4, 2000)) > 0)
-                  {
-                    int fdData;
-                    sockaddr_in cli_addr;
-                    socklen_t clilen = sizeof(cli_addr);
-                    if (fds[0].fd == fdSocket[0] && (fds[0].revents & POLLIN))
-                    {
-                      if ((fdData = accept(fdSocket[0], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
-                      {
-                        thread tThread(request, (SSL_CTX *)NULL, fdData, false);
-                        pthread_setname_np(tThread.native_handle(), "request");
-                        tThread.detach();
-                      }
-                      else
-                      {
-                        gbShutdown = true;
-                        ssMessage.str("");
-                        ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
-                        gpCentral->alert(ssMessage.str(), strError);
-                      }
-                    }
-                    if (fds[1].fd == fdSocket[1] && (fds[1].revents & POLLIN))
-                    {
-                      if ((fdData = accept(fdSocket[1], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
-                      {
-                        thread tThread(request, ctx, fdData, false);
-                        pthread_setname_np(tThread.native_handle(), "request");
-                        tThread.detach();
-                      }
-                      else
-                      {
-                        gbShutdown = true;
-                        ssMessage.str("");
-                        ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
-                        gpCentral->alert(ssMessage.str(), strError);
-                      }
-                    }
-                    if (fds[2].fd == fdSocket[2] && (fds[2].revents & POLLIN))
-                    {
-                      if ((fdData = accept(fdSocket[2], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
-                      {
-                        thread tThread(request, (SSL_CTX *)NULL, fdData, true);
-                        pthread_setname_np(tThread.native_handle(), "request");
-                        tThread.detach();
-                      }
-                      else
-                      {
-                        gbShutdown = true;
-                        ssMessage.str("");
-                        ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
-                        gpCentral->alert(ssMessage.str(), strError);
-                      }
-                    }
-                    if (fds[3].fd == fdSocket[3] && (fds[3].revents & POLLIN))
-                    {
-                      if ((fdData = accept(fdSocket[3], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
-                      {
-                        thread tThread(request, ctx, fdData, true);
-                        pthread_setname_np(tThread.native_handle(), "request");
-                        tThread.detach();
-                      }
-                      else
-                      {
-                        gbShutdown = true;
-                        ssMessage.str("");
-                        ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
-                        gpCentral->alert(ssMessage.str(), strError);
-                      }
-                    }
-                  }
-                  else if (nReturn < 0)
-                  {
-                    gbShutdown = true;
-                    ssMessage.str("");
-                    ssMessage << strPrefix << "->poll(" << errno << ") error:  " << strerror(errno);
-                    gpCentral->alert(ssMessage.str(), strError);
-                  }
-                }
-                close(fdSocket[0]);
-                close(fdSocket[1]);
-                close(fdSocket[2]);
-                close(fdSocket[3]);
-                ssMessage.str("");
-                ssMessage << strPrefix << "->close():  Closed socket.";
-                gpCentral->log(ssMessage.str(), strError);
-              }
-              else if (!bListen[0][0] || (bListen[0][3] && !bListen[1][0]) || (bListen[0][3] && bListen[1][3] && !bListen[2][0]) || (bListen[0][3] && bListen[1][3] && bListen[2][3] && !bListen[3][0]))
-              {
-                ssMessage.str("");
-                ssMessage << strPrefix << "->getaddrinfo(" << nReturn << ") error:  " << gai_strerror(nReturn);
-                gpCentral->alert(ssMessage.str(), strError);
-              }
-              else
-              {
-                ssMessage.str("");
-                ssMessage << strPrefix << "->" << ((!bListen[0][1] || (bListen[0][3] && !bListen[1][1]) || (bListen[0][3] && bListen[1][3] && !bListen[2][1]) || (bListen[0][3] && bListen[1][3] && bListen[2][3] && !bListen[3][1]))?"socket":((!bListen[0][2] || (bListen[0][3] && !bListen[1][2]) || (bListen[0][3] && bListen[1][3] && !bListen[2][2]) || (bListen[0][3] && bListen[1][3] && bListen[2][3] && !bListen[3][2]))?"bind":"listen")) << "(" << errno << ") error:  " << strerror(errno);
-                gpCentral->alert(ssMessage.str(), strError);
-              }
-            }
-            else
-            {
-              ssMessage.str("");
-              ssMessage << strPrefix << "->SSL_CTX_check_private_key() error:  Failed to confirm private key.";
-              gpCentral->alert(ssMessage.str(), strError);
-            }
-          }
-          else
-          {
-            ssMessage.str("");
-            ssMessage << strPrefix << "->SSL_CTX_use_PrivateKey_file() error:  Failed to register private key file.";
-            gpCentral->alert(ssMessage.str(), strError);
-          }
+          ssMessage.str("");
+          ssMessage << strPrefix << "->CentralAddons::utility()->sslLoadCertKey():  SSL certification/key loading was successful.";
+          gpCentral->log(ssMessage.str());
         }
         else
         {
+          gbShutdown = true;
           ssMessage.str("");
-          ssMessage << strPrefix << "->SSL_CTX_use_certificate_file() error:  Failed to register certificate file.";
-          gpCentral->alert(ssMessage.str(), strError);
+          ssMessage << strPrefix << "->CentralAddons::utility()->sslLoadCertKey() error:  " << strError;
+          gpCentral->notify(ssMessage.str());
         }
       }
       else
       {
+        gbShutdown = true;
         ssMessage.str("");
-        ssMessage << strPrefix << "->SSL_CTX_new() error:  Failed to create new SSL context.";
-        gpCentral->alert(ssMessage.str(), strError);
+        ssMessage << strPrefix << "->CentralAddons::utility()->sslInitServer() error:  " << strError;
+        gpCentral->notify(ssMessage.str());
+      }
+      if (!gbShutdown)
+      {
+        bool bListen[4][4];
+        int fdSocket[4], nReturn;
+        for (size_t i = 0; i < 4; i++)
+        {
+          addrinfo hints, *result;
+          memset(&hints, 0, sizeof(struct addrinfo));
+          hints.ai_family = AF_INET6;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+          bListen[i][0] = bListen[i][1] = bListen[i][2] = bListen[i][3] = false;
+          if ((nReturn = getaddrinfo(NULL, ((i == 0)?STANDARD_PORT_SINGLE:((i == 1)?SECURE_PORT_SINGLE:((i == 2)?STANDARD_PORT_MULTI:SECURE_PORT_MULTI))), &hints, &result)) == 0)
+          {
+            struct addrinfo *rp;
+            bListen[i][0] = true;
+            for (rp = result; !bListen[i][2] && rp != NULL; rp = rp->ai_next)
+            {
+              bListen[i][1] = bListen[i][2] = false;
+              if ((fdSocket[i] = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) >= 0)
+              {
+                int nOn = 1;
+                bListen[i][1] = true;
+                setsockopt(fdSocket[i], SOL_SOCKET, SO_REUSEADDR, (char *)&nOn, sizeof(nOn));
+                if (bind(fdSocket[i], rp->ai_addr, rp->ai_addrlen) == 0)
+                {
+                  bListen[i][2] = true;
+                  if (listen(fdSocket[i], SOMAXCONN) == 0)
+                  {
+                    bListen[i][3] = true;
+                  }
+                  else
+                  {
+                    close(fdSocket[i]);
+                  }
+                }
+                else
+                {
+                  close(fdSocket[i]);
+                }
+              }
+            }
+            freeaddrinfo(result);
+          }
+        }
+        if (bListen[0][3] && bListen[1][3] && bListen[2][3] && bListen[3][3])
+        {
+          ssMessage.str("");
+          ssMessage << strPrefix << "->listen():  Listening to socket.";
+          gpCentral->log(ssMessage.str());
+          while (!gbShutdown)
+          {
+            pollfd fds[4];
+            fds[0].fd = fdSocket[0];
+            fds[0].events = POLLIN;
+            fds[1].fd = fdSocket[1];
+            fds[1].events = POLLIN;
+            fds[2].fd = fdSocket[2];
+            fds[2].events = POLLIN;
+            fds[3].fd = fdSocket[3];
+            fds[3].events = POLLIN;
+            if ((nReturn = poll(fds, 4, 2000)) > 0)
+            {
+              int fdData;
+              sockaddr_in cli_addr;
+              socklen_t clilen = sizeof(cli_addr);
+              if (fds[0].fd == fdSocket[0] && (fds[0].revents & POLLIN))
+              {
+                if ((fdData = accept(fdSocket[0], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
+                {
+                  thread tThread(request, (SSL_CTX *)NULL, fdData, false);
+                  pthread_setname_np(tThread.native_handle(), "request");
+                  tThread.detach();
+                }
+                else
+                {
+                  gbShutdown = true;
+                  ssMessage.str("");
+                  ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
+                  gpCentral->alert(ssMessage.str());
+                }
+              }
+              if (fds[1].fd == fdSocket[1] && (fds[1].revents & POLLIN))
+              {
+                if ((fdData = accept(fdSocket[1], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
+                {
+                  thread tThread(request, ctx, fdData, false);
+                  pthread_setname_np(tThread.native_handle(), "request");
+                  tThread.detach();
+                }
+                else
+                {
+                  gbShutdown = true;
+                  ssMessage.str("");
+                  ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
+                  gpCentral->alert(ssMessage.str());
+                }
+              }
+              if (fds[2].fd == fdSocket[2] && (fds[2].revents & POLLIN))
+              {
+                if ((fdData = accept(fdSocket[2], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
+                {
+                  thread tThread(request, (SSL_CTX *)NULL, fdData, true);
+                  pthread_setname_np(tThread.native_handle(), "request");
+                  tThread.detach();
+                }
+                else
+                {
+                  gbShutdown = true;
+                  ssMessage.str("");
+                  ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
+                  gpCentral->alert(ssMessage.str());
+                }
+              }
+              if (fds[3].fd == fdSocket[3] && (fds[3].revents & POLLIN))
+              {
+                if ((fdData = accept(fdSocket[3], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
+                {
+                  thread tThread(request, ctx, fdData, true);
+                  pthread_setname_np(tThread.native_handle(), "request");
+                  tThread.detach();
+                }
+                else
+                {
+                  gbShutdown = true;
+                  ssMessage.str("");
+                  ssMessage << strPrefix << "->accept(" << errno << ") error:  " << strerror(errno);
+                  gpCentral->alert(ssMessage.str());
+                }
+              }
+            }
+            else if (nReturn < 0)
+            {
+              gbShutdown = true;
+              ssMessage.str("");
+              ssMessage << strPrefix << "->poll(" << errno << ") error:  " << strerror(errno);
+              gpCentral->alert(ssMessage.str());
+            }
+          }
+          close(fdSocket[0]);
+          close(fdSocket[1]);
+          close(fdSocket[2]);
+          close(fdSocket[3]);
+          ssMessage.str("");
+          ssMessage << strPrefix << "->close():  Closed socket.";
+          gpCentral->log(ssMessage.str());
+        }
+        else if (!bListen[0][0] || (bListen[0][3] && !bListen[1][0]) || (bListen[0][3] && bListen[1][3] && !bListen[2][0]) || (bListen[0][3] && bListen[1][3] && bListen[2][3] && !bListen[3][0]))
+        {
+          ssMessage.str("");
+          ssMessage << strPrefix << "->getaddrinfo(" << nReturn << ") error:  " << gai_strerror(nReturn);
+          gpCentral->alert(ssMessage.str());
+        }
+        else
+        {
+          ssMessage.str("");
+          ssMessage << strPrefix << "->" << ((!bListen[0][1] || (bListen[0][3] && !bListen[1][1]) || (bListen[0][3] && bListen[1][3] && !bListen[2][1]) || (bListen[0][3] && bListen[1][3] && bListen[2][3] && !bListen[3][1]))?"socket":((!bListen[0][2] || (bListen[0][3] && !bListen[1][2]) || (bListen[0][3] && bListen[1][3] && !bListen[2][2]) || (bListen[0][3] && bListen[1][3] && bListen[2][3] && !bListen[3][2]))?"bind":"listen")) << "(" << errno << ") error:  " << strerror(errno);
+          gpCentral->alert(ssMessage.str());
+        }
       }
       threadExpire.join();
       threadMonitor.join();
@@ -941,13 +928,13 @@ void expire()
         {
           ssMessage.str("");
           ssMessage << strPrefix << "->Central::file()->remove() [" << ssFile.str() << "]:  Removed expired file.";
-          gpCentral->log(ssMessage.str(), strError);
+          gpCentral->log(ssMessage.str());
         }
         else
         {
           ssMessage.str("");
           ssMessage << strPrefix << "->Central::file()->remove(" << errno << ") [" << ssFile.str() << "] error:  " << strerror(errno);
-          gpCentral->notify("", ssMessage.str(), strError);
+          gpCentral->notify(ssMessage.str());
         }
       }
     }
@@ -975,7 +962,7 @@ void monitor()
     {
       stringstream ssMessage;
       ssMessage << strPrefix << ":  The logger daemon has a resident size of " << ulResident << " KB which exceeds the maximum resident restriction of " << ulMaxResident << " KB.  Restarting process.";
-      gpCentral->notify("", ssMessage.str(), strError);
+      gpCentral->notify(ssMessage.str());
       gbShutdown = true;
       sighandle(SIGTERM);
     }
@@ -990,10 +977,10 @@ void monitor()
         ssMessage << strPrefix << ":  " << gunRequests << " requests were processed in the last 15 minutes.";
         gunRequests = 0;
         mutexRequest.unlock();
-        gpCentral->log(ssMessage.str(), strError);
+        gpCentral->log(ssMessage.str());
         ssMessage.str("");
         ssMessage << strPrefix << ":  Resident size is " << ulResident << ".";
-        gpCentral->log(ssMessage.str(), strError);
+        gpCentral->log(ssMessage.str());
       }
       for (size_t i = 0; !gbShutdown && i < 240; i++)
       {
@@ -1018,6 +1005,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   {
     gpSyslog->connectionStarted("Accepted an incoming request.", fdSocket);
   }
+  ERR_clear_error();
   if (!bSecure || (ssl = SSL_new(ctx)) != NULL)
   {
     if (!bSecure || SSL_set_fd(ssl, fdSocket) == 1)
@@ -1035,7 +1023,6 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
         char szBuffer[65536];
         size_t unPosition;
         string strApplication, strBuffer[2], strFunction;
-        unsigned long ulError;
         feed *ptFeed = NULL;
         while (!bExit)
         {
@@ -1096,7 +1083,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                             }
                             ssMessage.str("");
                             ssMessage << strPrefix << " [" << strFunction << " request]:  " << ptJson;
-                            gpCentral->log(ssMessage.str(), strError);
+                            gpCentral->log(ssMessage.str());
                             delete ptJson;
                           }
                           // {{{ Function:  feed
@@ -1369,7 +1356,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                       stringstream ssData, ssIndex;
                                       ssMessage.str("");
                                       ssMessage << strPrefix << " [" << i->substr((ssPrefix.str().size() + 1), 8) << "]:  Searching index and data files.";
-                                      gpCentral->log(ssMessage.str(), strError);
+                                      gpCentral->log(ssMessage.str());
                                       ptParse->strStartTime = strStartTime;
                                       ptParse->strEndTime = strEndTime;
                                       ptParse->pSearch = &search;
@@ -1454,55 +1441,20 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
                   }
                   ssMessage << ":  " << strerror(errno);
-                  gpCentral->log(ssMessage.str(), strError);
+                  gpCentral->log(ssMessage.str());
                 }
               }
               else
               {
-                stringstream ssError, ssErrorCode;
                 bExit = true;
-                switch (SSL_get_error(ssl, nReturn))
-                {
-                  case SSL_ERROR_NONE : ssErrorCode << "SSL_ERROR_NONE"; ssError << "The TLS/SSL I/O operation completed."; break;
-                  case SSL_ERROR_ZERO_RETURN : ssErrorCode << "SSL_ERROR_ZERO_RETURN"; ssError << "The TLS/SSL connection has been closed."; break;
-                  case SSL_ERROR_WANT_READ : ssErrorCode << "SSL_ERROR_WANT_READ"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break;
-                  case SSL_ERROR_WANT_WRITE : ssErrorCode << "SSL_ERROR_WANT_WRITE"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break; 
-                  case SSL_ERROR_WANT_CONNECT : ssErrorCode << "SSL_ERROR_WANT_CONNECT"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break;
-                  case SSL_ERROR_WANT_ACCEPT : ssErrorCode << "SSL_ERROR_WANT_ACCEPT"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break;
-                  case SSL_ERROR_WANT_X509_LOOKUP : ssErrorCode << "SSL_ERROR_WANT_X509_LOOKUP"; ssError << "The operation did not complete because an application callback set by SSL_CTX_set_client_cert_cb() has asked to be called again."; break;
-                  case SSL_ERROR_SYSCALL :
-                  {
-                    ssErrorCode << "SSL_ERROR_SYSCALL";
-                    ssError << "Some I/O error occurred.  ";
-                    if (nReturn == 0)
-                    { 
-                      ssError << "Received invalid EOF.";
-                    }
-                    else
-                    { 
-                      ssError << "read(" << errno << ") " << strerror(errno);
-                    }
-                    while ((ulError = ERR_get_error()) != 0)
-                    {
-                      char szError[120];
-                      if (ERR_error_string(ulError, szError) != NULL)
-                      { 
-                        ssError << "  " << szError;
-                      }
-                    }
-                    break;
-                  }
-                  case SSL_ERROR_SSL : strError = "SSL_ERROR_SSL"; ssError << "A failure in the SSL library occurred, usually a protocol error."; break;
-                  default : ssErrorCode << nReturn; ssError << "Caught an unknown error.";
-                }
                 ssMessage.str("");
-                ssMessage << strPrefix << "->SSL_read(" << ssErrorCode.str() << ") error";
+                ssMessage << strPrefix << "->SSL_read() error";
                 if (gFeed.find(fdSocket) != gFeed.end())
                 {
                   ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
                 }
-                ssMessage << ":  " << ssError.str();
-                gpCentral->log(ssMessage.str(), strError);
+                ssMessage << ":  " << gpCentral->utility()->sslstrerror();
+                gpCentral->log(ssMessage.str());
               }
             }
             // }}}
@@ -1531,55 +1483,20 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                       ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
                     }
                     ssMessage << ":  " << strerror(errno);
-                    gpCentral->log(ssMessage.str(), strError);
+                    gpCentral->log(ssMessage.str());
                   }
                 }
                 else
                 {
-                  stringstream ssError, ssErrorCode;
                   bExit = true;
-                  switch (SSL_get_error(ssl, nReturn))
-                  {
-                    case SSL_ERROR_NONE : ssErrorCode << "SSL_ERROR_NONE"; ssError << "The TLS/SSL I/O operation completed."; break;
-                    case SSL_ERROR_ZERO_RETURN : ssErrorCode << "SSL_ERROR_ZERO_RETURN"; ssError << "The TLS/SSL connection has been closed."; break;
-                    case SSL_ERROR_WANT_READ : ssErrorCode << "SSL_ERROR_WANT_READ"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break;
-                    case SSL_ERROR_WANT_WRITE : ssErrorCode << "SSL_ERROR_WANT_WRITE"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break; 
-                    case SSL_ERROR_WANT_CONNECT : ssErrorCode << "SSL_ERROR_WANT_CONNECT"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break;
-                    case SSL_ERROR_WANT_ACCEPT : ssErrorCode << "SSL_ERROR_WANT_ACCEPT"; ssError << "The operation did not complete; the same TLS/SSL I/O function should be called again later."; break;
-                    case SSL_ERROR_WANT_X509_LOOKUP : ssErrorCode << "SSL_ERROR_WANT_X509_LOOKUP"; ssError << "The operation did not complete because an application callback set by SSL_CTX_set_client_cert_cb() has asked to be called again."; break;
-                    case SSL_ERROR_SYSCALL :
-                    {
-                      ssErrorCode << "SSL_ERROR_SYSCALL";
-                      ssError << "Some I/O error occurred.  ";
-                      if (nReturn == 0)
-                      { 
-                        ssError << "Received invalid EOF.";
-                      }
-                      else
-                      { 
-                        ssError << "write(" << errno << ") " << strerror(errno);
-                      }
-                      while ((ulError = ERR_get_error()) != 0)
-                      {
-                        char szError[120];
-                        if (ERR_error_string(ulError, szError) != NULL)
-                        { 
-                          ssError << "  " << szError;
-                        }
-                      }
-                      break;
-                    }
-                    case SSL_ERROR_SSL : ssErrorCode << "SSL_ERROR_SSL"; ssError << "A failure in the SSL library occurred, usually a protocol error."; break;
-                    default : ssErrorCode << nReturn; ssError << "Caught an unknown error.";
-                  }
                   ssMessage.str("");
-                  ssMessage << strPrefix << "->SSL_write(" << ssErrorCode.str() << ") error";
+                  ssMessage << strPrefix << "->SSL_write() error";
                   if (gFeed.find(fdSocket) != gFeed.end())
                   {
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
                   }
-                  ssMessage << ":  " << ssError.str();
-                  gpCentral->log(ssMessage.str(), strError);
+                  ssMessage << ":  " << gpCentral->utility()->sslstrerror();
+                  gpCentral->log(ssMessage.str());
                 }
                 if (ptFeed != NULL)
                 {
@@ -1608,7 +1525,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
               ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
             }
             ssMessage << ":  " << strerror(errno);
-            gpCentral->notify(ssMessage.str(), strError);
+            gpCentral->notify(ssMessage.str());
           }
         }
         if (ptFeed != NULL)
@@ -1628,26 +1545,27 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
       else
       {
         ssMessage.str("");
-        ssMessage << strPrefix << "->SSL_accept() error:  Failed to accept SSL connection.";
-        gpCentral->notify(ssMessage.str(), strError);
+        ssMessage << strPrefix << "->SSL_accept() error:  " << gpCentral->utility()->sslstrerror();
+        gpCentral->notify(ssMessage.str());
       }
     }
     else
     {
       ssMessage.str("");
-      ssMessage << strPrefix << "->SSL_set_fd() error:  Failed to attach the file descriptor to the SSL handle.";
-      gpCentral->notify(ssMessage.str(), strError);
+      ssMessage << strPrefix << "->SSL_set_fd() error:  " << gpCentral->utility()->sslstrerror();
+      gpCentral->notify(ssMessage.str());
     }
     if (bSecure)
     {
+      SSL_shutdown(ssl);
       SSL_free(ssl);
     }
   }
   else
   {
     ssMessage.str("");
-    ssMessage << strPrefix << "->SSL_new() error:  Failed to create SSL handle.";
-    gpCentral->notify(ssMessage.str(), strError);
+    ssMessage << strPrefix << "->SSL_new() error:  " << gpCentral->utility()->sslstrerror();
+    gpCentral->notify(ssMessage.str());
   }
   close(fdSocket);
   mutexRequest.lock();
@@ -1748,7 +1666,7 @@ void requestSearch(parse *ptParse)
     {
       ssMessage.str("");
       ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ptParse->strData << "]:  " << strerror(errno);
-      gpCentral->notify("", ssMessage.str(), strError);
+      gpCentral->notify(ssMessage.str());
     }
     inData.close();
   }
@@ -1756,7 +1674,7 @@ void requestSearch(parse *ptParse)
   {
     ssMessage.str("");
     ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ptParse->strIndex << "]:  " << strerror(errno);
-    gpCentral->notify("", ssMessage.str(), strError);
+    gpCentral->notify(ssMessage.str());
   }
   inIndex.close();
 }
@@ -1773,7 +1691,7 @@ void sighandle(const int nSignal)
   {
     ssMessage.str("");
     ssMessage << strPrefix << ":  The program's signal handling caught a " << sigstring(strSignal, nSignal) << "(" << nSignal << ")!  Exiting...";
-    gpCentral->notify("", ssMessage.str(), strError);
+    gpCentral->notify(ssMessage.str());
   }
 
   exit(1);
