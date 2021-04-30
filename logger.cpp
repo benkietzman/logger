@@ -1444,7 +1444,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                   gpCentral->log(ssMessage.str());
                 }
               }
-              else
+              else if (SSL_get_error(ssl, nReturn) != SSL_ERROR_WANT_READ)
               {
                 bExit = true;
                 ssMessage.str("");
@@ -1486,7 +1486,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                     gpCentral->log(ssMessage.str());
                   }
                 }
-                else
+                else if (SSL_get_error(ssl, nReturn) != SSL_ERROR_WANT_WRITE)
                 {
                   bExit = true;
                   ssMessage.str("");
