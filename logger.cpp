@@ -1446,7 +1446,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                   {
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
                   }
-                  ssMessage << ":  " << gpCentral->utility()->sslstrerror();
+                  ssMessage << ":  " << gpCentral->utility()->sslstrerror(ssl, nReturn);
                   gpCentral->log(ssMessage.str());
                 }
               }
