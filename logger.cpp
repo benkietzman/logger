@@ -144,7 +144,6 @@ static string gstrEmail; //!< Global notification email address.
 static string gstrTimezonePrefix = "c"; //!< Contains the local timezone.
 static Central *gpCentral = NULL; //!< Contains the Central class.
 static Syslog *gpSyslog = NULL; //!< Contains the Syslog class.
-mutex mutexAccept;
 mutex mutexApplication;
 mutex mutexFeed;
 mutex mutexRequest;
@@ -1011,16 +1010,19 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
     if (!bSecure || SSL_set_fd(ssl, fdSocket) == 1)
     {
       int nReturn;
+      long lArg;
       if (bSecure)
       {
-        mutexAccept.lock();
         nReturn = SSL_accept(ssl);
-        mutexAccept.unlock();
+      }
+      if ((lArg = fcntl(fdSocket, F_GETFL, NULL)) >= 0)
+      {
+        lArg |= O_NONBLOCK;
+        fcntl(fdSocket, F_SETFL, lArg);
       }
       if (!bSecure || nReturn != -1)
       {
         bool bExit = false;
-        char szBuffer[65536];
         size_t unPosition;
         string strApplication, strBuffer[2], strFunction;
         feed *ptFeed = NULL;
@@ -1047,9 +1049,8 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             // {{{ read
             if (fds[0].fd == fdSocket && (fds[0].revents & POLLIN))
             {
-              if ((!bSecure && (nReturn = read(fdSocket, szBuffer, 65536)) > 0) || (bSecure && (nReturn = SSL_read(ssl, szBuffer, 65536)) > 0))
+              if ((!bSecure && gpCentral->utility()->fdread(fdSocket, strBuffer[0], nReturn)) || (bSecure && gpCentral->utility()->sslread(ssl, strBuffer[0], nReturn)))
               {
-                strBuffer[0].append(szBuffer, nReturn);
                 while ((unPosition = strBuffer[0].find("\n")) != string::npos)
                 {
                   bool bProcessed = false, bWrote = false;
@@ -1429,13 +1430,13 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                   delete ptRequest;
                 }
               }
-              else if (!bSecure)
+              else
               {
                 bExit = true;
-                if (nReturn < 0 || gFeed.find(fdSocket) != gFeed.end())
+                if (!bSecure && nReturn < 0)
                 {
                   ssMessage.str("");
-                  ssMessage << strPrefix << "->read(" << errno << ") error";
+                  ssMessage << strPrefix << "->Central::utility()->fdread(" << errno << ") error";
                   if (gFeed.find(fdSocket) != gFeed.end())
                   {
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
@@ -1443,18 +1444,17 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                   ssMessage << ":  " << strerror(errno);
                   gpCentral->log(ssMessage.str());
                 }
-              }
-              else if (SSL_get_error(ssl, nReturn) != SSL_ERROR_WANT_READ)
-              {
-                bExit = true;
-                ssMessage.str("");
-                ssMessage << strPrefix << "->SSL_read() error";
-                if (gFeed.find(fdSocket) != gFeed.end())
+                else if (bSecure && nReturn != SSL_ERROR_ZERO_RETURN)
                 {
-                  ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
+                  ssMessage.str("");
+                  ssMessage << strPrefix << "->Central::utility()->sslread(" << nReturn << ") error";
+                  if (gFeed.find(fdSocket) != gFeed.end())
+                  {
+                    ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
+                  }
+                  ssMessage << ":  " << gpCentral->utility()->sslstrerror();
+                  gpCentral->log(ssMessage.str());
                 }
-                ssMessage << ":  " << gpCentral->utility()->sslstrerror();
-                gpCentral->log(ssMessage.str());
               }
             }
             // }}}
@@ -1486,7 +1486,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                     gpCentral->log(ssMessage.str());
                   }
                 }
-                else if (SSL_get_error(ssl, nReturn) != SSL_ERROR_WANT_WRITE)
+                else
                 {
                   bExit = true;
                   ssMessage.str("");
