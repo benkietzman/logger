@@ -1010,15 +1010,9 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
     if (!bSecure || SSL_set_fd(ssl, fdSocket) == 1)
     {
       int nReturn;
-      long lArg;
       if (bSecure)
       {
         nReturn = SSL_accept(ssl);
-      }
-      if ((lArg = fcntl(fdSocket, F_GETFL, NULL)) >= 0)
-      {
-        lArg |= O_NONBLOCK;
-        fcntl(fdSocket, F_SETFL, lArg);
       }
       if (!bSecure || nReturn != -1)
       {
