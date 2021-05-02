@@ -1539,7 +1539,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
       else
       {
         ssMessage.str("");
-        ssMessage << strPrefix << "->SSL_accept() error:  " << gpCentral->utility()->sslstrerror();
+        ssMessage << strPrefix << "->SSL_accept() error:  " << gpCentral->utility()->sslstrerror(ssl, SSL_get_error(ssl, nReturn));
         gpCentral->notify(ssMessage.str());
       }
     }
