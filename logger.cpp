@@ -639,6 +639,7 @@ int main(int argc, char *argv[])
       }
       gApplication.clear();
       SSL_CTX_free(ctx);
+      EVP_cleanup();
       // {{{ check pid file
       if (gpCentral->file()->fileExist(gstrData + PID))
       {
