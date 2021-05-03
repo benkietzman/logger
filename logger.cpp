@@ -1455,7 +1455,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             // {{{ write
             if (fds[0].fd == fdSocket && (fds[0].revents & POLLOUT))
             {
-              if ((!bSecure && gpCentral->utility()->fdwrite(fdSocket, strBuffer[1], nReturn) > 0) || (bSecure && gpCentral->utility()->sslwrite(ssl, strBuffer[1], nReturn) > 0))
+              if ((!bSecure && gpCentral->utility()->fdwrite(fdSocket, strBuffer[1], nReturn)) || (bSecure && gpCentral->utility()->sslwrite(ssl, strBuffer[1], nReturn)))
               {
                 if (ptFeed == NULL && !bMulti && strBuffer[1].empty())
                 {
