@@ -207,9 +207,6 @@ int main(int argc, char *argv[])
   stringstream ssMessage;
 
   gpCentral = new Central(strError);
-  gpCentral->acorn()->useSingleSocket(true);
-  gpCentral->junction()->useSecureJunction(false);
-  gpCentral->junction()->useSingleSocket(true);
   // {{{ set signal handling
   sethandles(sighandle);
   sigignore(SIGBUS);
@@ -299,6 +296,10 @@ int main(int argc, char *argv[])
     }
   }
   // }}}
+  gpCentral->utility()->sslInit();
+  gpCentral->acorn()->useSingleSocket(true);
+  gpCentral->junction()->useSecureJunction(false);
+  gpCentral->junction()->useSingleSocket(true);
   gpCentral->setApplication(gstrApplication);
   gpCentral->setEmail(gstrEmail);
   gpCentral->setLog(gstrData, "logger_", "monthly", true, true);
@@ -639,7 +640,6 @@ int main(int argc, char *argv[])
       }
       gApplication.clear();
       SSL_CTX_free(ctx);
-      EVP_cleanup();
       // {{{ check pid file
       if (gpCentral->file()->fileExist(gstrData + PID))
       {
@@ -659,6 +659,7 @@ int main(int argc, char *argv[])
   {
     delete gpSyslog;
   }
+  gpCentral->utility()->sslDeinit();
   delete gpCentral;
 
   return 0;
