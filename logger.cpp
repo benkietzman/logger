@@ -436,24 +436,11 @@ int main(int argc, char *argv[])
       pthread_setname_np(threadExpire.native_handle(), "expire");
       thread threadMonitor(monitor);
       pthread_setname_np(threadMonitor.native_handle(), "monitor");
-      if ((ctx = gpCentral->utility()->sslInitServer(strError)) != NULL)
+      if ((ctx = gpCentral->utility()->sslInitServer((gstrData + CERTIFICATE), (gstrData + PRIVATE_KEY), strError)) != NULL)
       {
         ssMessage.str("");
         ssMessage << strPrefix << "->CentralAddons::utility()->sslInitServer():  SSL initialization was successful.";
         gpCentral->log(ssMessage.str());
-        if (gpCentral->utility()->sslLoadCertKey(ctx, (gstrData + CERTIFICATE), (gstrData + PRIVATE_KEY), strError))
-        {
-          ssMessage.str("");
-          ssMessage << strPrefix << "->CentralAddons::utility()->sslLoadCertKey():  SSL certification/key loading was successful.";
-          gpCentral->log(ssMessage.str());
-        }
-        else
-        {
-          gbShutdown = true;
-          ssMessage.str("");
-          ssMessage << strPrefix << "->CentralAddons::utility()->sslLoadCertKey() error:  " << strError;
-          gpCentral->notify(ssMessage.str());
-        }
       }
       else
       {
@@ -1045,7 +1032,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             // {{{ read
             if (fds[0].fd == fdSocket && (fds[0].revents & POLLIN))
             {
-              if ((!bSecure && gpCentral->utility()->fdread(fdSocket, strBuffer[0], nReturn)) || (bSecure && gpCentral->utility()->sslread(ssl, strBuffer[0], nReturn)))
+              if ((!bSecure && gpCentral->utility()->fdread(fdSocket, strBuffer[0], nReturn)) || (bSecure && gpCentral->utility()->sslRead(ssl, strBuffer[0], nReturn)))
               {
                 while ((unPosition = strBuffer[0].find("\n")) != string::npos)
                 {
@@ -1443,7 +1430,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                 else if (bSecure && SSL_get_error(ssl, nReturn) != SSL_ERROR_ZERO_RETURN)
                 {
                   ssMessage.str("");
-                  ssMessage << strPrefix << "->Central::utility()->sslread(" << SSL_get_error(ssl, nReturn) << ") error";
+                  ssMessage << strPrefix << "->Central::utility()->sslRead(" << SSL_get_error(ssl, nReturn) << ") error";
                   if (gFeed.find(fdSocket) != gFeed.end())
                   {
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
@@ -1457,7 +1444,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             // {{{ write
             if (fds[0].fd == fdSocket && (fds[0].revents & POLLOUT))
             {
-              if ((!bSecure && gpCentral->utility()->fdwrite(fdSocket, strBuffer[1], nReturn)) || (bSecure && gpCentral->utility()->sslwrite(ssl, strBuffer[1], nReturn)))
+              if ((!bSecure && gpCentral->utility()->fdwrite(fdSocket, strBuffer[1], nReturn)) || (bSecure && gpCentral->utility()->sslWrite(ssl, strBuffer[1], nReturn)))
               {
                 if (ptFeed == NULL && !bMulti && strBuffer[1].empty())
                 {
@@ -1472,7 +1459,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                   if (nReturn < 0 || gFeed.find(fdSocket) != gFeed.end())
                   {
                     ssMessage.str("");
-                    ssMessage << strPrefix << "->Central::utility()->sslwrite(" << errno << ") error";
+                    ssMessage << strPrefix << "->Central::utility()->sslWrite(" << errno << ") error";
                     if (gFeed.find(fdSocket) != gFeed.end())
                     {
                       ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
@@ -1485,7 +1472,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                 {
                   bExit = true;
                   ssMessage.str("");
-                  ssMessage << strPrefix << "->Central::utility()->sslwrite(" << SSL_get_error(ssl, nReturn) << ") error";
+                  ssMessage << strPrefix << "->Central::utility()->sslWrite(" << SSL_get_error(ssl, nReturn) << ") error";
                   if (gFeed.find(fdSocket) != gFeed.end())
                   {
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
