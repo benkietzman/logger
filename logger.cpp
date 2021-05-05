@@ -144,6 +144,7 @@ static string gstrEmail; //!< Global notification email address.
 static string gstrTimezonePrefix = "c"; //!< Contains the local timezone.
 static Central *gpCentral = NULL; //!< Contains the Central class.
 static Syslog *gpSyslog = NULL; //!< Contains the Syslog class.
+mutex mutexAccept;
 mutex mutexApplication;
 mutex mutexFeed;
 mutex mutexRequest;
@@ -1001,7 +1002,9 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
       int nReturn;
       if (bSecure)
       {
+        mutexAccept.lock();
         nReturn = SSL_accept(ssl);
+        mutexAccept.unlock();
       }
       if (!bSecure || nReturn != -1)
       {
