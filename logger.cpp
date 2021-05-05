@@ -998,10 +998,10 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   {
     if (!bSecure || SSL_set_fd(ssl, fdSocket) == 1)
     {
-      if (!bSecure || SSL_accept(ssl) == 1)
+      int nReturn;
+      if (!bSecure || (nReturn = SSL_accept(ssl)) == 1)
       {
         bool bExit = false;
-        int nReturn;
         size_t unPosition;
         string strApplication, strBuffer[2], strFunction;
         feed *ptFeed = NULL;
@@ -1523,7 +1523,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
       else
       {
         ssMessage.str("");
-        ssMessage << strPrefix << "->SSL_accept() error:  " << gpCentral->utility()->sslstrerror(ssl, SSL_get_error(ssl, nReturn));
+        ssMessage << strPrefix << "->SSL_accept(" << SSL_get_error(ssl, nReturn) << ") error:  " << gpCentral->utility()->sslstrerror(ssl, SSL_get_error(ssl, nReturn));
         gpCentral->log(ssMessage.str());
       }
     }
