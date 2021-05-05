@@ -144,7 +144,6 @@ static string gstrEmail; //!< Global notification email address.
 static string gstrTimezonePrefix = "c"; //!< Contains the local timezone.
 static Central *gpCentral = NULL; //!< Contains the Central class.
 static Syslog *gpSyslog = NULL; //!< Contains the Syslog class.
-mutex mutexAccept;
 mutex mutexApplication;
 mutex mutexFeed;
 mutex mutexRequest;
@@ -999,16 +998,10 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   {
     if (!bSecure || SSL_set_fd(ssl, fdSocket) == 1)
     {
-      int nReturn;
-      if (bSecure)
-      {
-        mutexAccept.lock();
-        nReturn = SSL_accept(ssl);
-        mutexAccept.unlock();
-      }
-      if (!bSecure || nReturn != -1)
+      if (!bSecure || SSL_accept(ssl) == 1)
       {
         bool bExit = false;
+        int nReturn;
         size_t unPosition;
         string strApplication, strBuffer[2], strFunction;
         feed *ptFeed = NULL;
@@ -1510,7 +1503,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
               ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
             }
             ssMessage << ":  " << strerror(errno);
-            gpCentral->notify(ssMessage.str());
+            gpCentral->log(ssMessage.str());
           }
         }
         if (ptFeed != NULL)
@@ -1531,14 +1524,14 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
       {
         ssMessage.str("");
         ssMessage << strPrefix << "->SSL_accept() error:  " << gpCentral->utility()->sslstrerror(ssl, SSL_get_error(ssl, nReturn));
-        gpCentral->notify(ssMessage.str());
+        gpCentral->log(ssMessage.str());
       }
     }
     else
     {
       ssMessage.str("");
       ssMessage << strPrefix << "->SSL_set_fd() error:  " << gpCentral->utility()->sslstrerror();
-      gpCentral->notify(ssMessage.str());
+      gpCentral->log(ssMessage.str());
     }
     if (bSecure)
     {
@@ -1550,7 +1543,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   {
     ssMessage.str("");
     ssMessage << strPrefix << "->SSL_new() error:  " << gpCentral->utility()->sslstrerror();
-    gpCentral->notify(ssMessage.str());
+    gpCentral->log(ssMessage.str());
   }
   close(fdSocket);
   mutexRequest.lock();
