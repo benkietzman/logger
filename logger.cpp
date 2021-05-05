@@ -1032,7 +1032,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             // {{{ read
             if (fds[0].fd == fdSocket && (fds[0].revents & POLLIN))
             {
-              if ((!bSecure && gpCentral->utility()->fdread(fdSocket, strBuffer[0], nReturn)) || (bSecure && gpCentral->utility()->sslRead(ssl, strBuffer[0], nReturn)))
+              if ((!bSecure && gpCentral->utility()->fdRead(fdSocket, strBuffer[0], nReturn)) || (bSecure && gpCentral->utility()->sslRead(ssl, strBuffer[0], nReturn)))
               {
                 while ((unPosition = strBuffer[0].find("\n")) != string::npos)
                 {
@@ -1419,7 +1419,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                 if (!bSecure && nReturn < 0)
                 {
                   ssMessage.str("");
-                  ssMessage << strPrefix << "->Central::utility()->fdread(" << errno << ") error";
+                  ssMessage << strPrefix << "->Central::utility()->fdRead(" << errno << ") error";
                   if (gFeed.find(fdSocket) != gFeed.end())
                   {
                     ssMessage << " [" << gFeed[fdSocket]->strApplication << "," << gFeed[fdSocket]->strUser << "]";
@@ -1444,7 +1444,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             // {{{ write
             if (fds[0].fd == fdSocket && (fds[0].revents & POLLOUT))
             {
-              if ((!bSecure && gpCentral->utility()->fdwrite(fdSocket, strBuffer[1], nReturn)) || (bSecure && gpCentral->utility()->sslWrite(ssl, strBuffer[1], nReturn)))
+              if ((!bSecure && gpCentral->utility()->fdWrite(fdSocket, strBuffer[1], nReturn)) || (bSecure && gpCentral->utility()->sslWrite(ssl, strBuffer[1], nReturn)))
               {
                 if (ptFeed == NULL && !bMulti && strBuffer[1].empty())
                 {
