@@ -394,30 +394,30 @@ int main(int argc, char *argv[])
         while (gpCentral->utility()->getLine(inApplication, strLine))
         {
           Json *ptApplication = new Json(strLine);
-          for (map<string, Json *>::iterator i = ptApplication->m.begin(); i != ptApplication->m.end(); i++)
+          for (auto &i : ptApplication->m)
           {
-            if (i->second->m.find("n") != i->second->m.end() && !i->second->m["n"]->v.empty() && i->second->m.find("a") != i->second->m.end())
+            if (i.second->m.find("n") != i.second->m.end() && !i.second->m["n"]->v.empty() && i.second->m.find("a") != i.second->m.end())
             {
               size_t unID;
               stringstream ssDataPrefix, ssID, ssIndexPrefix;
               app *ptApp = new app;
-              ptApp->strApplication = i->second->m["n"]->v;
-              ptApp->ptAuth = new Json(i->second->m["a"]);
-              for (map<string, Json *>::iterator j = ptApp->ptAuth->m.begin(); j != ptApp->ptAuth->m.end(); j++)
+              ptApp->strApplication = i.second->m["n"]->v;
+              ptApp->ptAuth = new Json(i.second->m["a"]);
+              for (auto &j : ptApp->ptAuth->m)
               {
-                if (!j->second->v.empty())
+                if (!j.second->v.empty())
                 {
-                  j->second->insert("p", j->second->v);
-                  j->second->insert("t", ((j->first == "logger")?"f":"r"));
+                  j.second->insert("p", j.second->v);
+                  j.second->insert("t", ((j.first == "logger")?"f":"r"));
                 }
               }
-              ssDataPrefix << gstrData << STORAGE << "/" << i->first << "-";
+              ssDataPrefix << gstrData << STORAGE << "/" << i.first << "-";
               ptApp->strDataPrefix = ssDataPrefix.str();
               ptApp->strDataSuffix = ".data";
-              ssIndexPrefix << gstrData << STORAGE << "/" << i->first << "-";
+              ssIndexPrefix << gstrData << STORAGE << "/" << i.first << "-";
               ptApp->strIndexPrefix = ssIndexPrefix.str();
               ptApp->strIndexSuffix = ".index";
-              ssID.str(i->first);
+              ssID.str(i.first);
               ssID >> unID;
               gApplication[unID] = ptApp;
             }
@@ -615,15 +615,15 @@ int main(int argc, char *argv[])
       {
         gpCentral->utility()->msleep(250);
       }
-      for (map<size_t, app *>::iterator i = gApplication.begin(); i != gApplication.end(); i++)
+      for (auto &i : gApplication)
       {
-        delete i->second->ptAuth;
-        i->second->strApplication.clear();
-        i->second->strDataPrefix.clear();
-        i->second->strDataSuffix.clear();
-        i->second->strIndexPrefix.clear();
-        i->second->strIndexSuffix.clear();
-        delete i->second;
+        delete i.second->ptAuth;
+        i.second->strApplication.clear();
+        i.second->strDataPrefix.clear();
+        i.second->strDataSuffix.clear();
+        i.second->strIndexPrefix.clear();
+        i.second->strIndexSuffix.clear();
+        delete i.second;
       }
       gApplication.clear();
       SSL_CTX_free(ctx);
@@ -660,12 +660,12 @@ bool auth(const string strApplication, const string strUser, const string strPas
   stringstream ssMessage, ssQuery;
 
   mutexApplication.lock();
-  for (map<size_t, app *>::iterator i = gApplication.begin(); i != gApplication.end(); i++)
+  for (auto &i : gApplication)
   {
-    if (i->second->strApplication == strApplication)
+    if (i.second->strApplication == strApplication)
     {
       bFoundApplication = true;
-      unID = i->first;
+      unID = i.first;
     }
   }
   if (!bFoundApplication)
@@ -859,16 +859,16 @@ bool auth(const string strApplication, const string strUser, const string strPas
     ofstream outApplication((gstrData + (string)STORAGE + (string)"/application.index").c_str());
     if (outApplication)
     {
-      for (map<size_t, app *>::iterator i = gApplication.begin(); i != gApplication.end(); i++)
+      for (auto &i : gApplication)
       {
         string strID;
         stringstream ssID;
         Json *ptApplication = new Json;
-        ssID << i->first;
+        ssID << i.first;
         strID = ssID.str();
         ptApplication->m[strID] = new Json;
-        ptApplication->m[strID]->insert("n", i->second->strApplication);
-        ptApplication->m[strID]->insert("a", i->second->ptAuth);
+        ptApplication->m[strID]->insert("n", i.second->strApplication);
+        ptApplication->m[strID]->insert("a", i.second->ptAuth);
         outApplication << ptApplication << endl;
         delete ptApplication;
       }
@@ -905,13 +905,13 @@ void expire()
     ssDate << setw(2) << setfill('0') << nMonth;
     ssDate << setw(2) << setfill('0') << nDay;
     gpCentral->file()->directoryList(gstrData + (string)STORAGE, dir);
-    for (list<string>::iterator i = dir.begin(); i != dir.end(); i++)
+    for (auto &i : dir)
     {
       size_t unPosition[2];
-      if (i->size() > 10 && (unPosition[0] = i->find("-")) != string::npos && (unPosition[1] = i->find(".", unPosition[0])) != string::npos && i->substr(unPosition[0] + 1, unPosition[1] - (unPosition[0] + 1)) < ssDate.str())
+      if (i.size() > 10 && (unPosition[0] = i.find("-")) != string::npos && (unPosition[1] = i.find(".", unPosition[0])) != string::npos && i.substr(unPosition[0] + 1, unPosition[1] - (unPosition[0] + 1)) < ssDate.str())
       {
         stringstream ssFile;
-        ssFile << gstrData << STORAGE << "/" << (*i);
+        ssFile << gstrData << STORAGE << "/" << i;
         if (gpCentral->file()->remove(ssFile.str()))
         {
           ssMessage.str("");
@@ -1216,12 +1216,12 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                   mutexRequest.unlock();
                                 }
                                 mutexFeed.lock();
-                                for (map<int, feed *>::iterator i = gFeed.begin(); i != gFeed.end(); i++)
+                                for (auto &i : gFeed)
                                 {
-                                  if (i->second->strApplication == strApplication)
+                                  if (i.second->strApplication == strApplication)
                                   {
                                     bool bMatch = true;
-                                    for (map<string, string>::iterator j = i->second->criteria.begin(); bMatch && j != i->second->criteria.end(); j++)
+                                    for (auto j = i.second->criteria.begin(); bMatch && j != i.second->criteria.end(); j++)
                                     {
                                       if (label.find(j->first) == label.end() || label[j->first] != j->second)
                                       {
@@ -1236,7 +1236,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                       ptMatch->insert("Message", ptRequest->m["Message"]->v);
                                       ptMatch->json(strResponse);
                                       delete ptMatch;
-                                      i->second->entry.push_back(strResponse);
+                                      i.second->entry.push_back(strResponse);
                                     }
                                   }
                                 }
@@ -1274,22 +1274,22 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                 ptRequest->json(strResponse);
                                 strBuffer[1].append(strResponse);
                                 strBuffer[1].append("\n");
-                                for (map<string, Json *>::iterator i = ptRequest->m["Search"]->m.begin(); i != ptRequest->m["Search"]->m.end(); i++)
+                                for (auto &i : ptRequest->m["Search"]->m)
                                 {
-                                  if (i->first == "Time")
+                                  if (i.first == "Time")
                                   {
-                                    if (i->second->m.find("Start") != i->second->m.end())
+                                    if (i.second->m.find("Start") != i.second->m.end())
                                     {
-                                      strStartTime = i->second->m["Start"]->v;
+                                      strStartTime = i.second->m["Start"]->v;
                                     }
-                                    if (i->second->m.find("End") != i->second->m.end())
+                                    if (i.second->m.find("End") != i.second->m.end())
                                     {
-                                      strEndTime = i->second->m["End"]->v;
+                                      strEndTime = i.second->m["End"]->v;
                                     }
                                   }
-                                  else if (!i->second->v.empty())
+                                  else if (!i.second->v.empty())
                                   {
-                                    search[i->first] = i->second->v;
+                                    search[i.first] = i.second->v;
                                   }
                                 }
                                 if (!strStartTime.empty())
@@ -1323,26 +1323,26 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                   }
                                 }
                                 gpCentral->file()->directoryList(gstrData + (string)STORAGE, dir);
-                                for (list<string>::iterator i = dir.begin(); i != dir.end(); i++)
+                                for (auto &i : dir)
                                 {
                                   stringstream ssPrefix;
                                   ssPrefix << unID;
-                                  if (i->size() == (ssPrefix.str().size() + 15) && i->substr(ssPrefix.str().size(), 1) == "-" && i->substr(0, ssPrefix.str().size() + 1) == (ssPrefix.str() + (string)"-") && i->substr(i->size() - 6, 6) == ".index")
+                                  if (i.size() == (ssPrefix.str().size() + 15) && i.substr(ssPrefix.str().size(), 1) == "-" && i.substr(0, ssPrefix.str().size() + 1) == (ssPrefix.str() + (string)"-") && i.substr(i.size() - 6, 6) == ".index")
                                   {
-                                    string strDate = i->substr(ssPrefix.str().size() + 1, 8);
+                                    string strDate = i.substr(ssPrefix.str().size() + 1, 8);
                                     if ((strStartDate.empty() || strDate >= strStartDate) && (strEndDate.empty() || strDate <= strEndDate))
                                     {
                                       parse *ptParse = new parse;
                                       stringstream ssData, ssIndex;
                                       ssMessage.str("");
-                                      ssMessage << strPrefix << " [" << i->substr((ssPrefix.str().size() + 1), 8) << "]:  Searching index and data files.";
+                                      ssMessage << strPrefix << " [" << i.substr((ssPrefix.str().size() + 1), 8) << "]:  Searching index and data files.";
                                       gpCentral->log(ssMessage.str());
                                       ptParse->strStartTime = strStartTime;
                                       ptParse->strEndTime = strEndTime;
                                       ptParse->pSearch = &search;
-                                      ssIndex << gstrData << STORAGE << "/" << (*i);
+                                      ssIndex << gstrData << STORAGE << "/" << i;
                                       ptParse->strIndex = ssIndex.str();
-                                      ssData << gApplication[unID]->strDataPrefix << i->substr((ssPrefix.str().size() + 1), 8) << gApplication[unID]->strDataSuffix;
+                                      ssData << gApplication[unID]->strDataPrefix << i.substr((ssPrefix.str().size() + 1), 8) << gApplication[unID]->strDataSuffix;
                                       ptParse->strData = ssData.str();
                                       ptParse->pstrBuffer = new string;
                                       ptParse->threadRequestSearch = thread(requestSearch, ptParse);
@@ -1352,12 +1352,12 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                   }
                                 }
                                 dir.clear();
-                                for (list<parse *>::iterator i = parseList.begin(); i != parseList.end(); i++)
+                                for (auto &i : parseList)
                                 {
-                                  (*i)->threadRequestSearch.join();
-                                  strBuffer[1].append(*((*i)->pstrBuffer));
-                                  delete (*i)->pstrBuffer;
-                                  delete (*i);
+                                  i->threadRequestSearch.join();
+                                  strBuffer[1].append(*(i->pstrBuffer));
+                                  delete i->pstrBuffer;
+                                  delete i;
                                 }
                                 parseList.clear();
                                 search.clear();
@@ -1576,7 +1576,7 @@ void requestSearch(parse *ptParse)
         }
         if (bMatch)
         {
-          for (map<string, string>::iterator i = ptParse->pSearch->begin(); bMatch && i != ptParse->pSearch->end(); i++)
+          for (auto i = ptParse->pSearch->begin(); bMatch && i != ptParse->pSearch->end(); i++)
           {
             if (ptJson->m["l"]->m.find(i->first) == ptJson->m["l"]->m.end() || ptJson->m["l"]->m[i->first]->v != i->second)
             {
@@ -1604,9 +1604,9 @@ void requestSearch(parse *ptParse)
           ptData = new Json;
           ptData->insert("Time", ptJson->m["t"]->v);
           ptData->m["Label"] = new Json;
-          for (map<string, Json *>::iterator j = ptJson->m["l"]->m.begin(); j != ptJson->m["l"]->m.end(); j++)
+          for (auto &j : ptJson->m["l"]->m)
           {
-            ptData->m["Label"]->insert(j->first, j->second->v);
+            ptData->m["Label"]->insert(j.first, j.second->v);
           }
           inData.seekg(unPosition);
           pszBuffer = new char[unSize];
