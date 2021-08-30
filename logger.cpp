@@ -176,11 +176,6 @@ void monitor();
 * \param bool bMulti Contains the multi-request value.
 */
 void request(SSL_CTX *ctx, int fdSocket, const bool bMulti);
-/*! \fn void requestSearch(parse *ptParse)
-* \brief Reads incoming data.
-* \param ptParse Contains the parse data.
-*/
-void requestSearch(parse *ptParse);
 /*! \fn void sighandle(const int nSignal)
 * \brief Establishes signal handling for the application.
 * \param nSignal Contains the caught signal.
@@ -1332,34 +1327,114 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                     string strDate = i.substr(ssPrefix.str().size() + 1, 8);
                                     if ((strStartDate.empty() || strDate >= strStartDate) && (strEndDate.empty() || strDate <= strEndDate))
                                     {
-                                      parse *ptParse = new parse;
+                                      ifstream inIndex;
                                       stringstream ssData, ssIndex;
                                       ssMessage.str("");
                                       ssMessage << strPrefix << " [" << i.substr((ssPrefix.str().size() + 1), 8) << "]:  Searching index and data files.";
                                       gpCentral->log(ssMessage.str());
-                                      ptParse->strStartTime = strStartTime;
-                                      ptParse->strEndTime = strEndTime;
-                                      ptParse->pSearch = &search;
                                       ssIndex << gstrData << STORAGE << "/" << i;
-                                      ptParse->strIndex = ssIndex.str();
                                       ssData << gApplication[unID]->strDataPrefix << i.substr((ssPrefix.str().size() + 1), 8) << gApplication[unID]->strDataSuffix;
-                                      ptParse->strData = ssData.str();
-                                      ptParse->pstrBuffer = new string;
-                                      ptParse->threadRequestSearch = thread(requestSearch, ptParse);
-                                      pthread_setname_np(ptParse->threadRequestSearch.native_handle(), "requestSearch");
-                                      parseList.push_back(ptParse);
+                                      inIndex.open(ssIndex.str().c_str());
+                                      if (inIndex)
+                                      {
+                                        ifstream inData;
+                                        inData.open(ssData.str().c_str(), ios::in|ios::binary);
+                                        if (inData)
+                                        {
+                                          string strLine;
+                                          while (getline(inIndex, strLine))
+                                          {
+                                            bool bMatch = true;
+                                            Json *ptJson = new Json(strLine);
+                                            if ((!strStartTime.empty() && ptJson->m["t"]->v < strStartTime) || (!strEndTime.empty() && ptJson->m["t"]->v >= strEndTime))
+                                            {
+                                              bMatch = false;
+                                            }
+                                            if (bMatch)
+                                            {
+                                              for (auto i = search.begin(); bMatch && i != search.end(); i++)
+                                              {
+                                                if (ptJson->m["l"]->m.find(i->first) == ptJson->m["l"]->m.end() || ptJson->m["l"]->m[i->first]->v != i->second)
+                                                {
+                                                  bMatch = false;
+                                                }
+                                              }
+                                            }
+                                            if (bMatch)
+                                            {
+                                              Bytef *pszZCompress;
+                                              char *pszBuffer, *pszBZCompress;
+                                              size_t unZCompress, unPosition, unSize;
+                                              string strSubBuffer, strResponse;
+                                              stringstream ssBZCompress, ssZCompress, ssData, ssPosition, ssSize;
+                                              unsigned int unBZCompress, unTempSize;
+                                              Json *ptData;
+                                              ssBZCompress.str(ptJson->m["b"]->v);
+                                              ssBZCompress >> unBZCompress;
+                                              ssZCompress.str(ptJson->m["z"]->v);
+                                              ssZCompress >> unZCompress;
+                                              ssPosition.str(ptJson->m["p"]->v);
+                                              ssPosition >> unPosition;
+                                              ssSize.str(ptJson->m["s"]->v);
+                                              ssSize >> unSize;
+                                              ptData = new Json;
+                                              ptData->insert("Time", ptJson->m["t"]->v);
+                                              ptData->m["Label"] = new Json;
+                                              for (auto &j : ptJson->m["l"]->m)
+                                              {
+                                                ptData->m["Label"]->insert(j.first, j.second->v);
+                                              }
+                                              inData.seekg(unPosition);
+                                              pszBuffer = new char[unSize];
+                                              pszBZCompress = new char[unBZCompress];
+                                              pszZCompress = new Bytef[unZCompress];
+                                              if (unBZCompress < unSize && unBZCompress < unZCompress)
+                                              {
+                                                inData.read(pszBZCompress, unBZCompress);
+                                                BZ2_bzBuffToBuffDecompress(pszBuffer, &unTempSize, pszBZCompress, unBZCompress, 0, 0);
+                                                unSize = unTempSize;
+                                              }
+                                              else if (unZCompress < unSize)
+                                              {
+                                                inData.read((char *)pszZCompress, unZCompress);
+                                                uncompress((Bytef *)pszBuffer, &unSize, pszZCompress, unZCompress);
+                                              }
+                                              else
+                                              {
+                                                inData.read(pszBuffer, unSize);
+                                              }
+                                              strSubBuffer.assign(pszBuffer, unSize);
+                                              delete[] pszBuffer;
+                                              delete[] pszBZCompress;
+                                              delete[] pszZCompress;
+                                              ptData->insert("Message", strSubBuffer);
+                                              ptData->json(strResponse);
+                                              delete ptData;
+                                              strBuffer[1].append(strResponse);
+                                              strBuffer[1].append("\n");
+                                            }
+                                            delete ptJson;
+                                          }
+                                        }
+                                        else
+                                        {
+                                          ssMessage.str("");
+                                          ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ssData.str() << "]:  " << strerror(errno);
+                                          gpCentral->notify(ssMessage.str());
+                                        }
+                                        inData.close();
+                                      }
+                                      else
+                                      {
+                                        ssMessage.str("");
+                                        ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ssIndex.str() << "]:  " << strerror(errno);
+                                        gpCentral->notify(ssMessage.str());
+                                      }
+                                      inIndex.close();
                                     }
                                   }
                                 }
                                 dir.clear();
-                                for (auto &i : parseList)
-                                {
-                                  i->threadRequestSearch.join();
-                                  strBuffer[1].append(*(i->pstrBuffer));
-                                  delete i->pstrBuffer;
-                                  delete i;
-                                }
-                                parseList.clear();
                                 search.clear();
                               }
                               else
@@ -1549,112 +1624,6 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   mutexRequest.lock();
   gnRequests--;
   mutexRequest.unlock();
-}
-// }}}
-// {{{ requestSearch()
-void requestSearch(parse *ptParse)
-{
-  ifstream inIndex;
-  string strError, strPrefix = "requestSearch()";
-  stringstream ssMessage;
-
-  inIndex.open(ptParse->strIndex.c_str());
-  if (inIndex)
-  {
-    ifstream inData;
-    inData.open(ptParse->strData.c_str(), ios::in|ios::binary);
-    if (inData)
-    {
-      string strLine;
-      while (getline(inIndex, strLine))
-      {
-        bool bMatch = true;
-        Json *ptJson = new Json(strLine);
-        if ((!ptParse->strStartTime.empty() && ptJson->m["t"]->v < ptParse->strStartTime) || (!ptParse->strEndTime.empty() && ptJson->m["t"]->v >= ptParse->strEndTime))
-        {
-          bMatch = false;
-        }
-        if (bMatch)
-        {
-          for (auto i = ptParse->pSearch->begin(); bMatch && i != ptParse->pSearch->end(); i++)
-          {
-            if (ptJson->m["l"]->m.find(i->first) == ptJson->m["l"]->m.end() || ptJson->m["l"]->m[i->first]->v != i->second)
-            {
-              bMatch = false;
-            }
-          }
-        }
-        if (bMatch)
-        {
-          Bytef *pszZCompress;
-          char *pszBuffer, *pszBZCompress;
-          size_t unZCompress, unPosition, unSize;
-          string strBuffer, strResponse;
-          stringstream ssBZCompress, ssZCompress, ssData, ssPosition, ssSize;
-          unsigned int unBZCompress, unTempSize;
-          Json *ptData;
-          ssBZCompress.str(ptJson->m["b"]->v);
-          ssBZCompress >> unBZCompress;
-          ssZCompress.str(ptJson->m["z"]->v);
-          ssZCompress >> unZCompress;
-          ssPosition.str(ptJson->m["p"]->v);
-          ssPosition >> unPosition;
-          ssSize.str(ptJson->m["s"]->v);
-          ssSize >> unSize;
-          ptData = new Json;
-          ptData->insert("Time", ptJson->m["t"]->v);
-          ptData->m["Label"] = new Json;
-          for (auto &j : ptJson->m["l"]->m)
-          {
-            ptData->m["Label"]->insert(j.first, j.second->v);
-          }
-          inData.seekg(unPosition);
-          pszBuffer = new char[unSize];
-          pszBZCompress = new char[unBZCompress];
-          pszZCompress = new Bytef[unZCompress];
-          if (unBZCompress < unSize && unBZCompress < unZCompress)
-          {
-            inData.read(pszBZCompress, unBZCompress);
-            BZ2_bzBuffToBuffDecompress(pszBuffer, &unTempSize, pszBZCompress, unBZCompress, 0, 0);
-            unSize = unTempSize;
-          }
-          else if (unZCompress < unSize)
-          {
-            inData.read((char *)pszZCompress, unZCompress);
-            uncompress((Bytef *)pszBuffer, &unSize, pszZCompress, unZCompress);
-          }
-          else
-          {
-            inData.read(pszBuffer, unSize);
-          }
-          strBuffer.assign(pszBuffer, unSize);
-          delete[] pszBuffer;
-          delete[] pszBZCompress;
-          delete[] pszZCompress;
-          ptData->insert("Message", strBuffer);
-          ptData->json(strResponse);
-          delete ptData;
-          (*ptParse->pstrBuffer).append(strResponse);
-          (*ptParse->pstrBuffer).append("\n");
-        }
-        delete ptJson;
-      }
-    }
-    else
-    {
-      ssMessage.str("");
-      ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ptParse->strData << "]:  " << strerror(errno);
-      gpCentral->notify(ssMessage.str());
-    }
-    inData.close();
-  }
-  else
-  {
-    ssMessage.str("");
-    ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ptParse->strIndex << "]:  " << strerror(errno);
-    gpCentral->notify(ssMessage.str());
-  }
-  inIndex.close();
 }
 // }}}
 // {{{ sighandle()
