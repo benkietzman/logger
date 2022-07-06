@@ -1477,6 +1477,16 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                   if (!bWrote)
                   {
                     ptRequest->insert("Status", ((bProcessed)?"okay":"error"));
+                    if (ptRequest->m.find("Label") != ptRequest->m.end())
+                    {
+                      delete ptRequest->m["Label"];
+                      ptRequest->m.erase("Label");
+                    }
+                    if (ptRequest->m.find("Message") != ptRequest->m.end())
+                    {
+                      delete ptRequest->m["Message"];
+                      ptRequest->m.erase("Message");
+                    }
                     ptRequest->json(strResponse);
                     strBuffer[1].append(strResponse);
                     strBuffer[1].append("\n");
