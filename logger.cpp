@@ -204,11 +204,11 @@ int main(int argc, char *argv[])
   gpCentral = new Central(strError);
   // {{{ set signal handling
   sethandles(sighandle);
-  sigignore(SIGBUS);
-  sigignore(SIGCHLD);
-  sigignore(SIGPIPE);
-  sigignore(SIGSEGV);
-  sigignore(SIGWINCH);
+  signal(SIGBUS, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGSEGV, SIG_IGN);
+  signal(SIGWINCH, SIG_IGN);
   // }}}
   // {{{ command line arguments
   for (int i = 1; i < argc; i++)
