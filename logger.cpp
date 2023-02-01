@@ -45,7 +45,6 @@ using namespace std;
 #include <Central>
 #include <Json>
 #include <SignalHandling>
-#include <Syslog>
 using namespace common;
 // }}}
 // {{{ defines
@@ -59,7 +58,7 @@ using namespace common;
 /*! \def mUSAGE(A)
 * \brief Prints the usage statement.
 */
-#define mUSAGE(A) cout << endl << "Usage:  "<< A << " [options]"  << endl << endl << " -c, --conf=[CONF]" << endl << "     Provides the configuration path." << endl << endl << " -d, --daemon" << endl << "     Turns the process into a daemon." << endl << endl << "     --data" << endl << "     Sets the data directory." << endl << endl << " -e EMAIL, --email=EMAIL" << endl << "     Provides the email address for default notifications." << endl << endl << " -h, --help" << endl << "     Displays this usage screen." << endl << endl << " -r DAYS, --retain=DAYS" << endl << "     Provides the number of days long-term data should be retained." << endl << endl << "     --syslog" << endl << "     Enables syslog." << endl << endl << " -v, --version" << endl << "     Displays the current version of this software." << endl << endl
+#define mUSAGE(A) cout << endl << "Usage:  "<< A << " [options]"  << endl << endl << " -c, --conf=[CONF]" << endl << "     Provides the configuration path." << endl << endl << " -d, --daemon" << endl << "     Turns the process into a daemon." << endl << endl << "     --data" << endl << "     Sets the data directory." << endl << endl << " -e EMAIL, --email=EMAIL" << endl << "     Provides the email address for default notifications." << endl << endl << " -h, --help" << endl << "     Displays this usage screen." << endl << endl << " -r DAYS, --retain=DAYS" << endl << "     Provides the number of days long-term data should be retained." << endl << endl << " -v, --version" << endl << "     Displays the current version of this software." << endl << endl
 /*! \def mVER_USAGE(A,B)
 * \brief Prints the version number.
 */
@@ -143,7 +142,6 @@ static string gstrData = "/data/logger"; //!< Global data path.
 static string gstrEmail; //!< Global notification email address.
 static string gstrTimezonePrefix = "c"; //!< Contains the local timezone.
 static Central *gpCentral = NULL; //!< Contains the Central class.
-static Syslog *gpSyslog = NULL; //!< Contains the Syslog class.
 mutex mutexApplication;
 mutex mutexFeed;
 mutex mutexRequest;
@@ -273,10 +271,6 @@ int main(int argc, char *argv[])
       gpCentral->manip()->purgeChar(strRetain, strRetain, "'");
       gpCentral->manip()->purgeChar(strRetain, strRetain, "\"");
       gnRetain = atoi(strRetain.c_str());
-    }
-    else if (strArg == "--syslog")
-    {
-      gpSyslog = new Syslog(gstrApplication, "logger");
     }
     else if (strArg == "-v" || strArg == "--version")
     {
@@ -637,10 +631,6 @@ int main(int argc, char *argv[])
     mUSAGE(argv[0]);
   }
   // }}}
-  if (gpSyslog != NULL)
-  {
-    delete gpSyslog;
-  }
   gpCentral->utility()->sslDeinit();
   delete gpCentral;
 
@@ -761,10 +751,6 @@ bool auth(const string strApplication, const string strUser, const string strPas
       if (bResult)
       {
         bResult = false;
-        if (gpSyslog != NULL)
-        {
-          gpSyslog->logon((string)"Authenticated the " + strApplication + (string)" application.", strUser);
-        }
         if (gApplication[unID]->ptAuth->m[strUser]->m["t"]->v == "f" || ((strFunction == "feed" || strFunction == "search") && gApplication[unID]->ptAuth->m[strUser]->m["t"]->v == "r") || ((strFunction == "log" || strFunction == "message") && gApplication[unID]->ptAuth->m[strUser]->m["t"]->v == "w"))
         {
           bResult = true;
@@ -809,10 +795,6 @@ bool auth(const string strApplication, const string strUser, const string strPas
           }
           gpCentral->free(getAccountType);
         }
-      }
-      else if (gpSyslog != NULL)
-      {
-        gpSyslog->logon((string)"Failed to authenticate the " + strApplication + (string)" application.", strUser, false);
       }
     }
     else if (verify(strApplication, strUser, strPassword, strError))
@@ -984,10 +966,6 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   mutexRequest.lock();
   gnRequests++;
   mutexRequest.unlock();
-  if (gpSyslog != NULL)
-  {
-    gpSyslog->connectionStarted("Accepted an incoming request.", fdSocket);
-  }
   ERR_clear_error();
   if (!bSecure || (ssl = SSL_new(ctx)) != NULL)
   {
