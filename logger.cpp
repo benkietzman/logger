@@ -174,6 +174,18 @@ void monitor();
 * \param bool bMulti Contains the multi-request value.
 */
 void request(SSL_CTX *ctx, int fdSocket, const bool bMulti);
+/*! \fn void requestSearch(const size_t unID, map<string, string> s, const string strStartDate, const string strStartTime, const string strEndDate, const string strEndTime, string &strBuffer, bool &bSearch)
+* \brief Searches the logs.
+* \param unID Contains the application ID.
+* \param s Contains the search criteria.
+* \param strStartDate Contains the start date.
+* \param strStartTime Contains the start time.
+* \param strEndDate Contains the end date.
+* \param strEndTime Contains the end time.
+* \param strBuffer Contains the output buffer.
+* \param bSearch Contains the search true/false value.
+*/
+void requestSearch(const size_t unID, map<string, string> s, const string strStartDate, const string strStartTime, const string strEndDate, const string strEndTime, string &strBuffer, bool &bSearch);
 /*! \fn void sighandle(const int nSignal)
 * \brief Establishes signal handling for the application.
 * \param nSignal Contains the caught signal.
@@ -974,9 +986,10 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
       int nReturn;
       if (!bSecure || (nReturn = SSL_accept(ssl)) == 1)
       {
-        bool bExit = false;
+        bool bExit = false, bSearch = false;
         size_t unPosition;
-        string strApplication, strBuffer[2], strFunction;
+        string strApplication, strBuffer[2], strFunction, strSearch;
+        thread *pThreadSearch = NULL;
         feed *ptFeed = NULL;
         while (!bExit)
         {
@@ -1230,199 +1243,89 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                           // {{{ Function:  search
                           else if (strFunction == "search")
                           {
-                            size_t unID;
-                            if (auth(strApplication, ptRequest->m["User"]->v, ptRequest->m["Password"]->v, strFunction, unID, strError))
+                            if (bSearch)
                             {
-                              if (ptRequest->m.find("Search") != ptRequest->m.end())
+                              size_t unID;
+                              if (auth(strApplication, ptRequest->m["User"]->v, ptRequest->m["Password"]->v, strFunction, unID, strError))
                               {
-                                list<string> dir;
-                                list<parse *> parseList;
-                                map<string, string> search;
-                                string strStartDate, strStartTime, strEndDate, strEndTime;
-                                bProcessed = bWrote = true;
-                                mutexRequest.lock();
-                                gunRequests++;
-                                mutexRequest.unlock();
-                                ptRequest->insert("Status", "okay");
-                                ptRequest->json(strResponse);
-                                strBuffer[1].append(strResponse);
-                                strBuffer[1].append("\n");
-                                for (auto &i : ptRequest->m["Search"]->m)
+                                if (ptRequest->m.find("Search") != ptRequest->m.end())
                                 {
-                                  if (i.first == "Time")
+                                  map<string, string> s;
+                                  string strStartDate, strStartTime, strEndDate, strEndTime;
+                                  bProcessed = bWrote = true;
+                                  mutexRequest.lock();
+                                  gunRequests++;
+                                  mutexRequest.unlock();
+                                  ptRequest->insert("Status", "okay");
+                                  ptRequest->json(strResponse);
+                                  strBuffer[1].append(strResponse);
+                                  strBuffer[1].append("\n");
+                                  for (auto &i : ptRequest->m["Search"]->m)
                                   {
-                                    if (i.second->m.find("Start") != i.second->m.end())
+                                    if (i.first == "Time")
                                     {
-                                      strStartTime = i.second->m["Start"]->v;
-                                    }
-                                    if (i.second->m.find("End") != i.second->m.end())
-                                    {
-                                      strEndTime = i.second->m["End"]->v;
-                                    }
-                                  }
-                                  else if (!i.second->v.empty())
-                                  {
-                                    search[i.first] = i.second->v;
-                                  }
-                                }
-                                if (!strStartTime.empty())
-                                {
-                                  stringstream ssTime(strStartTime);
-                                  struct tm tTime;
-                                  time_t CTime;
-                                  ssTime >> CTime;
-                                  if (localtime_r(&CTime, &tTime) != NULL)
-                                  {
-                                    char szTimeStamp[9] = "\0";
-                                    if (strftime(szTimeStamp, 9, "%Y%m%d", &tTime) > 0)
-                                    {
-                                      strStartDate = szTimeStamp;
-                                    }
-                                  }
-                                }
-                                if (!strEndTime.empty())
-                                {
-                                  stringstream ssTime(strEndTime);
-                                  struct tm tTime;
-                                  time_t CTime;
-                                  ssTime >> CTime;
-                                  if (localtime_r(&CTime, &tTime) != NULL)
-                                  {
-                                    char szTimeStamp[9] = "\0";
-                                    if (strftime(szTimeStamp, 9, "%Y%m%d", &tTime) > 0)
-                                    {
-                                      strEndDate = szTimeStamp;
-                                    }
-                                  }
-                                }
-                                gpCentral->file()->directoryList(gstrData + (string)STORAGE, dir);
-                                for (auto &i : dir)
-                                {
-                                  stringstream ssPrefix;
-                                  ssPrefix << unID;
-                                  if (i.size() == (ssPrefix.str().size() + 15) && i.substr(ssPrefix.str().size(), 1) == "-" && i.substr(0, ssPrefix.str().size() + 1) == (ssPrefix.str() + (string)"-") && i.substr(i.size() - 6, 6) == ".index")
-                                  {
-                                    string strDate = i.substr(ssPrefix.str().size() + 1, 8);
-                                    if ((strStartDate.empty() || strDate >= strStartDate) && (strEndDate.empty() || strDate <= strEndDate))
-                                    {
-                                      ifstream inIndex;
-                                      stringstream ssData, ssIndex;
-                                      ssMessage.str("");
-                                      ssMessage << strPrefix << " [" << i.substr((ssPrefix.str().size() + 1), 8) << "]:  Searching index and data files.";
-                                      gpCentral->log(ssMessage.str());
-                                      ssIndex << gstrData << STORAGE << "/" << i;
-                                      ssData << gApplication[unID]->strDataPrefix << i.substr((ssPrefix.str().size() + 1), 8) << gApplication[unID]->strDataSuffix;
-                                      inIndex.open(ssIndex.str().c_str());
-                                      if (inIndex)
+                                      if (i.second->m.find("Start") != i.second->m.end())
                                       {
-                                        ifstream inData;
-                                        inData.open(ssData.str().c_str(), ios::in|ios::binary);
-                                        if (inData)
-                                        {
-                                          string strLine;
-                                          while (getline(inIndex, strLine))
-                                          {
-                                            bool bMatch = true;
-                                            Json *ptJson = new Json(strLine);
-                                            if ((!strStartTime.empty() && ptJson->m["t"]->v < strStartTime) || (!strEndTime.empty() && ptJson->m["t"]->v >= strEndTime))
-                                            {
-                                              bMatch = false;
-                                            }
-                                            if (bMatch)
-                                            {
-                                              for (auto i = search.begin(); bMatch && i != search.end(); i++)
-                                              {
-                                                if (ptJson->m["l"]->m.find(i->first) == ptJson->m["l"]->m.end() || ptJson->m["l"]->m[i->first]->v != i->second)
-                                                {
-                                                  bMatch = false;
-                                                }
-                                              }
-                                            }
-                                            if (bMatch)
-                                            {
-                                              Bytef *pszZCompress;
-                                              char *pszBuffer, *pszBZCompress;
-                                              size_t unZCompress, unPosition, unSize;
-                                              string strSubBuffer, strResponse;
-                                              stringstream ssBZCompress, ssZCompress, ssData, ssPosition, ssSize;
-                                              unsigned int unBZCompress, unTempSize;
-                                              Json *ptData;
-                                              ssBZCompress.str(ptJson->m["b"]->v);
-                                              ssBZCompress >> unBZCompress;
-                                              ssZCompress.str(ptJson->m["z"]->v);
-                                              ssZCompress >> unZCompress;
-                                              ssPosition.str(ptJson->m["p"]->v);
-                                              ssPosition >> unPosition;
-                                              ssSize.str(ptJson->m["s"]->v);
-                                              ssSize >> unSize;
-                                              ptData = new Json;
-                                              ptData->insert("Time", ptJson->m["t"]->v);
-                                              ptData->m["Label"] = new Json;
-                                              for (auto &j : ptJson->m["l"]->m)
-                                              {
-                                                ptData->m["Label"]->insert(j.first, j.second->v);
-                                              }
-                                              inData.seekg(unPosition);
-                                              pszBuffer = new char[unSize];
-                                              pszBZCompress = new char[unBZCompress];
-                                              pszZCompress = new Bytef[unZCompress];
-                                              if (unBZCompress < unSize && unBZCompress < unZCompress)
-                                              {
-                                                inData.read(pszBZCompress, unBZCompress);
-                                                BZ2_bzBuffToBuffDecompress(pszBuffer, &unTempSize, pszBZCompress, unBZCompress, 0, 0);
-                                                unSize = unTempSize;
-                                              }
-                                              else if (unZCompress < unSize)
-                                              {
-                                                inData.read((char *)pszZCompress, unZCompress);
-                                                uncompress((Bytef *)pszBuffer, &unSize, pszZCompress, unZCompress);
-                                              }
-                                              else
-                                              {
-                                                inData.read(pszBuffer, unSize);
-                                              }
-                                              strSubBuffer.assign(pszBuffer, unSize);
-                                              delete[] pszBuffer;
-                                              delete[] pszBZCompress;
-                                              delete[] pszZCompress;
-                                              ptData->insert("Message", strSubBuffer);
-                                              ptData->json(strResponse);
-                                              delete ptData;
-                                              strBuffer[1].append(strResponse);
-                                              strBuffer[1].append("\n");
-                                            }
-                                            delete ptJson;
-                                          }
-                                        }
-                                        else
-                                        {
-                                          ssMessage.str("");
-                                          ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ssData.str() << "]:  " << strerror(errno);
-                                          gpCentral->notify(ssMessage.str());
-                                        }
-                                        inData.close();
+                                        strStartTime = i.second->m["Start"]->v;
                                       }
-                                      else
+                                      if (i.second->m.find("End") != i.second->m.end())
                                       {
-                                        ssMessage.str("");
-                                        ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ssIndex.str() << "]:  " << strerror(errno);
-                                        gpCentral->notify(ssMessage.str());
+                                        strEndTime = i.second->m["End"]->v;
                                       }
-                                      inIndex.close();
+                                    }
+                                    else if (!i.second->v.empty())
+                                    {
+                                      s[i.first] = i.second->v;
                                     }
                                   }
+                                  if (!strStartTime.empty())
+                                  {
+                                    stringstream ssTime(strStartTime);
+                                    struct tm tTime;
+                                    time_t CTime;
+                                    ssTime >> CTime;
+                                    if (localtime_r(&CTime, &tTime) != NULL)
+                                    {
+                                      char szTimeStamp[9] = "\0";
+                                      if (strftime(szTimeStamp, 9, "%Y%m%d", &tTime) > 0)
+                                      {
+                                        strStartDate = szTimeStamp;
+                                      }
+                                    }
+                                  }
+                                  if (!strEndTime.empty())
+                                  {
+                                    stringstream ssTime(strEndTime);
+                                    struct tm tTime;
+                                    time_t CTime;
+                                    ssTime >> CTime;
+                                    if (localtime_r(&CTime, &tTime) != NULL)
+                                    {
+                                      char szTimeStamp[9] = "\0";
+                                      if (strftime(szTimeStamp, 9, "%Y%m%d", &tTime) > 0)
+                                      {
+                                        strEndDate = szTimeStamp;
+                                      }
+                                    }
+                                  }
+                                  bSearch = true;
+                                  pThreadSearch = new thread(requestSearch, unID, s, strStartDate, strStartTime, strEndDate, strEndTime, std::ref(strSearch), std::ref(bSearch));
+                                  pthread_setname_np(pThreadSearch->native_handle(), "requestSearch");
+                                  s.clear();
                                 }
-                                dir.clear();
-                                search.clear();
+                                else
+                                {
+                                  ptRequest->insert("Error", "Please provide the Search.");
+                                }
                               }
                               else
                               {
-                                ptRequest->insert("Error", "Please provide the Search.");
+                                ptRequest->insert("Error", strError);
                               }
                             }
                             else
                             {
-                              ptRequest->insert("Error", strError);
+                              ptRequest->insert("Error", "Please wait for the previous search to complete before starting a new search.");
                             }
                           }
                           // }}}
@@ -1568,6 +1471,17 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             ssMessage << ":  " << strerror(errno);
             gpCentral->log(ssMessage.str());
           }
+          if (pThreadSearch != NULL && !bSearch)
+          {
+            pThreadSearch->join();
+            delete pThreadSearch;
+            pThreadSearch = NULL;
+            if (!strSearch.empty())
+            {
+              strBuffer[1].append(strSearch);
+              strSearch.clear();
+            }
+          }
         }
         if (ptFeed != NULL)
         {
@@ -1581,6 +1495,14 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
           ptFeed->entry.clear();
           delete ptFeed;
           ptFeed = NULL;
+        }
+        if (pThreadSearch != NULL)
+        {
+          bSearch = false;
+          pThreadSearch->join();
+          delete pThreadSearch;
+          pThreadSearch = NULL;
+          strSearch.clear();
         }
       }
       else
@@ -1612,6 +1534,134 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
   mutexRequest.lock();
   gnRequests--;
   mutexRequest.unlock();
+}
+// }}}
+// {{{ requestSearch()
+void requestSearch(const size_t unID, map<string, string> s, const string strStartDate, const string strStartTime, const string strEndDate, const string strEndTime, string &strBuffer, bool &bSearch)
+{
+  list<string> dir;
+  string strPrefix = "reqeustsSearch()";
+  stringstream ssMessage;
+
+  gpCentral->file()->directoryList(gstrData + (string)STORAGE, dir);
+  for (auto &i : dir)
+  {
+    stringstream ssPrefix;
+    ssPrefix << unID;
+    if (bSearch && i.size() == (ssPrefix.str().size() + 15) && i.substr(ssPrefix.str().size(), 1) == "-" && i.substr(0, ssPrefix.str().size() + 1) == (ssPrefix.str() + (string)"-") && i.substr(i.size() - 6, 6) == ".index")
+    {
+      string strDate = i.substr(ssPrefix.str().size() + 1, 8);
+      if ((strStartDate.empty() || strDate >= strStartDate) && (strEndDate.empty() || strDate <= strEndDate))
+      {
+        ifstream inIndex;
+        stringstream ssData, ssIndex;
+        ssMessage.str("");
+        ssMessage << strPrefix << " [" << i.substr((ssPrefix.str().size() + 1), 8) << "]:  Searching index and data files.";
+        gpCentral->log(ssMessage.str());
+        ssIndex << gstrData << STORAGE << "/" << i;
+        ssData << gApplication[unID]->strDataPrefix << i.substr((ssPrefix.str().size() + 1), 8) << gApplication[unID]->strDataSuffix;
+        inIndex.open(ssIndex.str().c_str());
+        if (inIndex)
+        {
+          ifstream inData;
+          inData.open(ssData.str().c_str(), ios::in|ios::binary);
+          if (inData)
+          {
+            string strLine;
+            while (bSearch && getline(inIndex, strLine))
+            {
+              bool bMatch = true;
+              Json *ptJson = new Json(strLine);
+              if ((!strStartTime.empty() && ptJson->m["t"]->v < strStartTime) || (!strEndTime.empty() && ptJson->m["t"]->v >= strEndTime))
+              {
+                bMatch = false;
+              }
+              if (bMatch)
+              {
+                for (auto i = s.begin(); bMatch && i != s.end(); i++)
+                {
+                  if (ptJson->m["l"]->m.find(i->first) == ptJson->m["l"]->m.end() || ptJson->m["l"]->m[i->first]->v != i->second)
+                  {
+                    bMatch = false;
+                  }
+                }
+              }
+              if (bMatch)
+              {
+                Bytef *pszZCompress;
+                char *pszBuffer, *pszBZCompress;
+                size_t unZCompress, unPosition, unSize;
+                string strSubBuffer, strResponse;
+                stringstream ssBZCompress, ssZCompress, ssData, ssPosition, ssSize;
+                unsigned int unBZCompress, unTempSize;
+                Json *ptData;
+                ssBZCompress.str(ptJson->m["b"]->v);
+                ssBZCompress >> unBZCompress;
+                ssZCompress.str(ptJson->m["z"]->v);
+                ssZCompress >> unZCompress;
+                ssPosition.str(ptJson->m["p"]->v);
+                ssPosition >> unPosition;
+                ssSize.str(ptJson->m["s"]->v);
+                ssSize >> unSize;
+                ptData = new Json;
+                ptData->insert("Time", ptJson->m["t"]->v);
+                ptData->m["Label"] = new Json;
+                for (auto &j : ptJson->m["l"]->m)
+                {
+                  ptData->m["Label"]->insert(j.first, j.second->v);
+                }
+                inData.seekg(unPosition);
+                pszBuffer = new char[unSize];
+                pszBZCompress = new char[unBZCompress];
+                pszZCompress = new Bytef[unZCompress];
+                if (unBZCompress < unSize && unBZCompress < unZCompress)
+                {
+                  inData.read(pszBZCompress, unBZCompress);
+                  BZ2_bzBuffToBuffDecompress(pszBuffer, &unTempSize, pszBZCompress, unBZCompress, 0, 0);
+                  unSize = unTempSize;
+                }
+                else if (unZCompress < unSize)
+                {
+                  inData.read((char *)pszZCompress, unZCompress);
+                  uncompress((Bytef *)pszBuffer, &unSize, pszZCompress, unZCompress);
+                }
+                else
+                {
+                  inData.read(pszBuffer, unSize);
+                }
+                strSubBuffer.assign(pszBuffer, unSize);
+                delete[] pszBuffer;
+                delete[] pszBZCompress;
+                delete[] pszZCompress;
+                ptData->insert("Message", strSubBuffer);
+                ptData->json(strResponse);
+                delete ptData;
+                strBuffer.append(strResponse);
+                strBuffer.append("\n");
+              }
+              delete ptJson;
+            }
+          }
+          else
+          {
+            ssMessage.str("");
+            ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ssData.str() << "]:  " << strerror(errno);
+            gpCentral->notify(ssMessage.str());
+          }
+          inData.close();
+        }
+        else
+        {
+          ssMessage.str("");
+          ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << ssIndex.str() << "]:  " << strerror(errno);
+          gpCentral->notify(ssMessage.str());
+        }
+        inIndex.close();
+      }
+    }
+  }
+  dir.clear();
+  bSearch = false;
 }
 // }}}
 // {{{ sighandle()
