@@ -1243,7 +1243,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                           // {{{ Function:  search
                           else if (strFunction == "search")
                           {
-                            if (bSearch)
+                            if (!bSearch)
                             {
                               size_t unID;
                               if (auth(strApplication, ptRequest->m["User"]->v, ptRequest->m["Password"]->v, strFunction, unID, strError))
