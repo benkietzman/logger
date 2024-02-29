@@ -1252,7 +1252,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                 {
                                   map<string, string> s;
                                   string strStartDate, strStartTime, strEndDate, strEndTime;
-                                  bProcessed = bWrote = true;
+                                  bProcessed = bSearch = bWrote = true;
                                   mutexRequest.lock();
                                   gunRequests++;
                                   mutexRequest.unlock();
@@ -1308,7 +1308,6 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                                       }
                                     }
                                   }
-                                  bSearch = true;
                                   pThreadSearch = new thread(requestSearch, unID, s, strStartDate, strStartTime, strEndDate, strEndTime, std::ref(strSearch), std::ref(bSearch));
                                   pthread_setname_np(pThreadSearch->native_handle(), "requestSearch");
                                   s.clear();
@@ -1408,7 +1407,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
             {
               if ((!bSecure && gpCentral->utility()->fdWrite(fdSocket, strBuffer[1], nReturn)) || (bSecure && gpCentral->utility()->sslWrite(ssl, strBuffer[1], nReturn)))
               {
-                if (ptFeed == NULL && !bMulti && strBuffer[1].empty())
+                if (ptFeed == NULL && !bMulti && pThreadSearch == NULL && strBuffer[1].empty())
                 {
                   bExit = true;
                 }
