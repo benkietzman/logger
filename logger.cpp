@@ -39,7 +39,9 @@
 #include <pthread.h>
 #include <sstream>
 #include <string>
+#include <sys/syscall.h>
 #include <thread>
+#include <unistd.h>
 #include <zlib.h>
 using namespace std;
 #include <Central>
@@ -972,9 +974,11 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
 {
   bool bSecure = ((ctx != NULL)?true:false);
   SSL *ssl = NULL;
-  string strError, strPrefix = "request()";
-  stringstream ssMessage;
+  string strError, strPrefix;
+  stringstream ssMessage, ssPrefix;
 
+  ssPrefix << "request(" << syscall(SYS_gettid) << ")";
+  strPrefix = ssPrefix.str();
   mutexRequest.lock();
   gnRequests++;
   mutexRequest.unlock();
@@ -1048,7 +1052,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
                               ptJson->m["Password"]->v = "******";
                             }
                             ssMessage.str("");
-                            ssMessage << strPrefix << " [" << strFunction << " request]:  " << ptJson;
+                            ssMessage << strPrefix << " [" << strFunction << " request " << fdSocket << "]:  " << ptJson;
                             gpCentral->log(ssMessage.str());
                             delete ptJson;
                           }
@@ -1539,9 +1543,11 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
 void requestSearch(const size_t unID, map<string, string> s, const string strStartDate, const string strStartTime, const string strEndDate, const string strEndTime, string &strBuffer, bool &bSearch)
 {
   list<string> dir;
-  string strPrefix = "reqeustsSearch()";
-  stringstream ssMessage;
+  string strPrefix;
+  stringstream ssMessage, ssPrefix;
 
+  ssPrefix << "requestSearch(" << syscall(SYS_gettid) << ")";
+  strPrefix = ssPrefix.str();
   gpCentral->file()->directoryList(gstrData + (string)STORAGE, dir);
   for (auto &i : dir)
   {
