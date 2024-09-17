@@ -15,7 +15,7 @@ all: bin/logger
 
 bin/%: ../common/libcommon.a obj/%.o
 	-if [ ! -d bin ]; then mkdir bin; fi;
-	g++ -o bin/logger obj/logger.o $(LDFLAGS) -L../common -lbz2 -lcommon -lb64 -lcrypto -lexpat -lmjson -lnsl -lpthread -lrt -lssl -ltar -lz
+	g++ -o bin/logger obj/logger.o $(LDFLAGS) -L../common -lbz2 -lcommon -lb64 -lcrypto -lexpat -lmjson -lpthread -lrt -lssl -ltar -lz
 
 ../common/libcommon.a: ../common/Makefile
 	cd ../common; make;
