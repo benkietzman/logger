@@ -982,7 +982,7 @@ void request(SSL_CTX *ctx, int fdSocket, const bool bMulti)
         string strApplication, strBuffer[2], strFunction, strSearch;
         thread *pThreadSearch = NULL;
         feed *ptFeed = NULL;
-        while (!bExit)
+        while (!gbShutdown && !bExit)
         {
           pollfd fds[1];
           fds[0].fd = fdSocket;
