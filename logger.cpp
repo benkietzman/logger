@@ -1670,8 +1670,6 @@ void sighandle(const int nSignal)
     ssMessage << strPrefix << ":  The program's signal handling caught a " << sigstring(strSignal, nSignal) << "(" << nSignal << ")!  Exiting...";
     gpCentral->notify(ssMessage.str());
   }
-
-  exit(1);
 }
 // }}}
 // {{{ verify()
