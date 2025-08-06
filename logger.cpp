@@ -229,7 +229,6 @@ int main(int argc, char *argv[])
       gpCentral->manip()->purgeChar(strConf, strConf, "'");
       gpCentral->manip()->purgeChar(strConf, strConf, "\"");
       gpCentral->utility()->setConfPath(strConf, strError);
-      gpCentral->acorn()->utility()->setConfPath(strConf, strError);
       gpCentral->junction()->utility()->setConfPath(strConf, strError);
     }
     else if (strArg == "-d" || strArg == "--daemon")
@@ -289,7 +288,6 @@ int main(int argc, char *argv[])
   }
   // }}}
   gpCentral->utility()->sslInit();
-  gpCentral->acorn()->useSingleSocket(true);
   gpCentral->junction()->useSecureJunction(false);
   gpCentral->junction()->useSingleSocket(true);
   gpCentral->setApplication(gstrApplication);
@@ -348,7 +346,7 @@ int main(int argc, char *argv[])
     if (inFile)
     {
       string strLine;
-      if (gpCentral->utility()->getLine(inFile, strLine))
+      if (getline(inFile, strLine))
       {
         Json *ptCredentials = new Json(strLine);
         ptCredentials->flatten(credentials, true, false);
@@ -383,7 +381,7 @@ int main(int argc, char *argv[])
       inApplication.open((gstrData + (string)STORAGE + (string)"/application.index").c_str());
       if (inApplication)
       {
-        while (gpCentral->utility()->getLine(inApplication, strLine))
+        while (getline(inApplication, strLine))
         {
           Json *ptApplication = new Json(strLine);
           for (auto &i : ptApplication->m)
