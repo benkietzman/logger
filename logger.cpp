@@ -36,6 +36,7 @@ using namespace std;
 #include <Central>
 #include <Json>
 #include <SignalHandling>
+#include <Warden>
 using namespace common;
 // }}}
 // {{{ defines
@@ -49,7 +50,7 @@ using namespace common;
 /*! \def mUSAGE(A)
 * \brief Prints the usage statement.
 */
-#define mUSAGE(A) cout << endl << "Usage:  "<< A << " [options]"  << endl << endl << " -c, --conf=[CONF]" << endl << "     Provides the configuration path." << endl << endl << " -d, --daemon" << endl << "     Turns the process into a daemon." << endl << endl << "     --data" << endl << "     Sets the data directory." << endl << endl << " -e EMAIL, --email=EMAIL" << endl << "     Provides the email address for default notifications." << endl << endl << " -h, --help" << endl << "     Displays this usage screen." << endl << endl << " -r DAYS, --retain=DAYS" << endl << "     Provides the number of days long-term data should be retained." << endl << endl << " -v, --version" << endl << "     Displays the current version of this software." << endl << endl
+#define mUSAGE(A) cout << endl << "Usage:  "<< A << " [options]"  << endl << endl << " -c, --conf=[CONF]" << endl << "     Provides the configuration path." << endl << endl << " -d, --daemon" << endl << "     Turns the process into a daemon." << endl << endl << "     --data" << endl << "     Sets the data directory." << endl << endl << " -e EMAIL, --email=EMAIL" << endl << "     Provides the email address for default notifications." << endl << endl << " -h, --help" << endl << "     Displays this usage screen." << endl << endl << " -r DAYS, --retain=DAYS" << endl << "     Provides the number of days long-term data should be retained." << endl << endl << " -v, --version" << endl << "     Displays the current version of this software." << endl << endl << " -w, --warden" << endl << "     Provides the path to the Warden socket." << endl << endl
 /*! \def mVER_USAGE(A,B)
 * \brief Prints the version number.
 */
@@ -199,7 +200,7 @@ bool verify(const string strApplication, const string strUser, const string strP
 */
 int main(int argc, char *argv[])
 {
-  string strError, strPrefix = "main()";
+  string strError, strPrefix = "main()", strWarden = "/data/warden/socket";
   stringstream ssMessage;
 
   gpCentral = new Central(strError);
@@ -279,6 +280,19 @@ int main(int argc, char *argv[])
       mVER_USAGE(argv[0], VERSION);
       return 0;
     }
+    else if (strArg == "-w" || (strArg.size() > 9 && strArg.substr(0, 9) == "--warden="))
+    {
+      if (strArg == "-w" && i + 1 < argc && argv[i+1][0] != '-')
+      {
+        strWarden = argv[++i];
+      }
+      else
+      {
+        strWarden = strArg.substr(9, strArg.size() - 9);
+      }
+      gpCentral->manip()->purgeChar(strWarden, strWarden, "'");
+      gpCentral->manip()->purgeChar(strWarden, strWarden, "\"");
+    }
     else
     {
       cout << endl << "Illegal option, '" << strArg << "'." << endl;
@@ -299,6 +313,8 @@ int main(int argc, char *argv[])
   {
     ifstream inFile;
     map<string, string> credentials;
+    Json *ptCredentials = new Json;
+    Warden warden(gstrApplication, strWarden, strError);
     if (gbDaemon)
     {
       gpCentral->utility()->daemonize();
@@ -342,26 +358,19 @@ int main(int argc, char *argv[])
     //  gbShutdown = true;
     //}
     // {{{ initialize database connections
-    inFile.open((gstrData + (string)"/.cred").c_str());
-    if (inFile)
+    if (warden.vaultRetrieve(ptCredentials, strError))
     {
-      string strLine;
-      if (getline(inFile, strLine))
-      {
-        Json *ptCredentials = new Json(strLine);
-        ptCredentials->flatten(credentials, true, false);
-        delete ptCredentials;
-        gpCentral->addDatabase("central", credentials, strError);
-      }
+      ptCredentials->flatten(credentials, true, false);
+      gpCentral->addDatabase("central", credentials, strError);
     }
     else
     {
       gbShutdown = true;
       ssMessage.str("");
-      ssMessage << strPrefix << "->ifstream::open(" << errno << ") error [" << gstrData << "/.cred]:  " << strerror(errno);
+      ssMessage << strPrefix << "->Warden::vaultRetrieve() error:  " << strError;
       gpCentral->alert(ssMessage.str());
     }
-    inFile.close();
+    delete ptCredentials;
     // }}}
     if (!gbShutdown)
     {
