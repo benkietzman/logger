@@ -35,6 +35,7 @@
 using namespace std;
 #include <Central>
 #include <Json>
+#include <Radial>
 #include <SignalHandling>
 #include <Warden>
 using namespace common;
@@ -134,6 +135,7 @@ static string gstrData = "/data/logger"; //!< Global data path.
 static string gstrEmail; //!< Global notification email address.
 static string gstrTimezonePrefix = "c"; //!< Contains the local timezone.
 static Central *gpCentral = NULL; //!< Contains the Central class.
+static Radial *gpRadial = NULL; //!< Contains the Radial class.
 mutex mutexApplication;
 mutex mutexFeed;
 mutex mutexRequest;
@@ -202,6 +204,8 @@ int main(int argc, char *argv[])
 {
   string strError, strPrefix = "main()", strWarden = "/data/warden/socket";
   stringstream ssMessage;
+  Json *ptCredentials;
+  Warden *pWarden;
 
   gpCentral = new Central(strError);
   // {{{ set signal handling
@@ -308,13 +312,46 @@ int main(int argc, char *argv[])
   gpCentral->setEmail(gstrEmail);
   gpCentral->setLog(gstrData, "logger_", "monthly", true, true);
   gpCentral->setRoom("#nma.system");
+  gpRadial = new Radial(strError);
+  pWarden = new Warden(gstrApplication, strWarden, strError);
+  ptCredentials = new Json;
+  if (pWarden->vaultRetrieve(ptCredentials, strError))
+  {
+    if (ptCredentials->m.find("User") != ptCredentials->m.end() && !ptCredentials->m["User"]->v.empty())
+    {
+      if (ptCredentials->m.find("Password") != ptCredentials->m.end() && !ptCredentials->m["Password"]->v.empty())
+      {
+        gpRadial->setCredentials(ptCredentials->m["User"]->v, ptCredentials->m["Password"]->v);
+      }
+      else
+      {
+        gbShutdown = true;
+        ssMessage.str("");
+        ssMessage << strPrefix << "->Warden::vaultRetrieve() error:  Please provide the Password.";
+        gpCentral->alert(ssMessage.str());
+      }
+    }
+    else
+    {
+      gbShutdown = true;
+      ssMessage.str("");
+      ssMessage << strPrefix << "->Warden::vaultRetrieve() error:  Please provide the User.";
+      gpCentral->alert(ssMessage.str());
+    }
+  }
+  else
+  {
+    gbShutdown = true;
+    ssMessage.str("");
+    ssMessage << strPrefix << "->Warden::vaultRetrieve() error:  " << strError;
+    gpCentral->alert(ssMessage.str());
+  }
+  delete ptCredentials;
+  gpRadial->useSingleSocket();
   // {{{ normal run
   if (!gstrEmail.empty())
   {
     ifstream inFile;
-    map<string, string> credentials;
-    Json *ptCredentials = new Json;
-    Warden warden(gstrApplication, strWarden, strError);
     if (gbDaemon)
     {
       gpCentral->utility()->daemonize();
@@ -357,21 +394,6 @@ int main(int argc, char *argv[])
     //{
     //  gbShutdown = true;
     //}
-    // {{{ initialize database connections
-    if (warden.vaultRetrieve(ptCredentials, strError))
-    {
-      ptCredentials->flatten(credentials, true, false);
-      gpCentral->addDatabase("central", credentials, strError);
-    }
-    else
-    {
-      gbShutdown = true;
-      ssMessage.str("");
-      ssMessage << strPrefix << "->Warden::vaultRetrieve() error:  " << strError;
-      gpCentral->alert(ssMessage.str());
-    }
-    delete ptCredentials;
-    // }}}
     if (!gbShutdown)
     {
       ifstream inApplication;
@@ -642,6 +664,8 @@ int main(int argc, char *argv[])
   }
   // }}}
   gpCentral->utility()->sslDeinit();
+  delete pWarden;
+  delete gpRadial;
   delete gpCentral;
 
   return 0;
@@ -667,7 +691,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
   {
     ssQuery.str("");
     ssQuery << "select id from application where name = '" << strApplication << "'";
-    list<map<string, string> > *getApplication = gpCentral->query("central", ssQuery.str(), strError);
+    list<map<string, string> > *getApplication = gpRadial->dbQuery("central_r", ssQuery.str(), strError);
     if (getApplication != NULL)
     {
       if (!getApplication->empty())
@@ -685,7 +709,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
         {
           ssQuery.str("");
           ssQuery << "select b.type from application_account a, account_type b where a.type_id = b.id and a.application_id = " << unID << " and a.user_id = '" << strUser << "'";
-          list<map<string, string> > *getAccountType = gpCentral->query("central", ssQuery.str(), strError);
+          list<map<string, string> > *getAccountType = gpRadial->dbQuery("central_r", ssQuery.str(), strError);
           if (getAccountType != NULL)
           {
             if (!getAccountType->empty())
@@ -730,7 +754,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
               strError = "Failed to locate Account Type.";
             }
           }
-          gpCentral->free(getAccountType);
+          gpRadial->dbFree(getAccountType);
         }
         else
         {
@@ -743,7 +767,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
         strError = "Please provide a valid Application.";
       }
     }
-    gpCentral->free(getApplication);
+    gpRadial->dbFree(getApplication);
   }
   if (bFoundApplication && !bResult)
   {
@@ -769,7 +793,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
         {
           ssQuery.str("");
           ssQuery << "select b.type from application_account a, account_type b where a.type_id = b.id and a.application_id = " << unID << " and a.user_id = '" << strUser << "'";
-          list<map<string, string> > *getAccountType = gpCentral->query("central", ssQuery.str(), strError);
+          list<map<string, string> > *getAccountType = gpRadial->dbQuery("central_r", ssQuery.str(), strError);
           if (getAccountType != NULL)
           {
             bUpdate = true;
@@ -803,7 +827,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
               gApplication[unID]->ptAuth->m.erase(strUser);
             }
           }
-          gpCentral->free(getAccountType);
+          gpRadial->dbFree(getAccountType);
         }
       }
     }
@@ -811,7 +835,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
     {
       ssQuery.str("");
       ssQuery << "select b.type from application_account a, account_type b where a.type_id = b.id and a.application_id = " << unID << " and a.user_id = '" << strUser << "'";
-      list<map<string, string> > *getAccountType = gpCentral->query("central", ssQuery.str(), strError);
+      list<map<string, string> > *getAccountType = gpRadial->dbQuery("central_r", ssQuery.str(), strError);
       if (getAccountType != NULL)
       {
         if (!getAccountType->empty())
@@ -839,6 +863,7 @@ bool auth(const string strApplication, const string strUser, const string strPas
           strError = "Failed to locate Account Type.";
         }
       }
+      gpRadial->dbFree(getAccountType);
     }
   }
   if (bUpdate)
