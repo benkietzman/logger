@@ -534,11 +534,11 @@ int main(int argc, char *argv[])
             if ((nReturn = poll(fds, 4, 2000)) > 0)
             {
               int fdData;
-              sockaddr_in cli_addr;
+              sockaddr_in6 cli_addr;
               socklen_t clilen = sizeof(cli_addr);
               if (fds[0].fd == fdSocket[0] && (fds[0].revents & POLLIN))
               {
-                if ((fdData = accept(fdSocket[0], (struct sockaddr *)&cli_addr, &clilen)) >= 0)
+                if ((fdData = accept(fdSocket[0], (sockaddr *)&cli_addr, &clilen)) >= 0)
                 {
                   thread tThread(request, (SSL_CTX *)NULL, fdData, false);
                   pthread_setname_np(tThread.native_handle(), "request");
